@@ -13,7 +13,11 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
-const notes = process.argv.slice(2).join(' ');
+// --local : construit uniquement le feed release/ (pour distribution LAN via
+// serve-updates), sans publier de release GitHub publique.
+const rawArgs = process.argv.slice(2);
+const local = rawArgs.includes('--local');
+const notes = rawArgs.filter((a) => a !== '--local').join(' ');
 
 const zipName = 'snipe-ftn.zip';
 const releaseDir = path.join(root, 'release');
@@ -55,6 +59,13 @@ fs.writeFileSync(path.join(releaseDir, 'latest.json'), JSON.stringify(latest, nu
 
 console.log('Feed local prêt dans release/ :');
 console.log(`  version : ${version}  |  ${(size / 1024).toFixed(0)} Ko  |  sha256 ${sha256.slice(0, 12)}…`);
+
+// Mode LAN : on s'arrête ici (aucune publication publique).
+if (local) {
+  console.log('\n✓ Feed LAN prêt. Sers-le avec :  npm run serve:updates');
+  console.log('  Puis mets l\'UPDATE_URL affichée dans le .env des PC clients.');
+  process.exit(0);
+}
 
 // 4. Publication GitHub Releases (canal d'auto-update autonome).
 //    Nécessite gh authentifié. Si la release existe déjà, on remplace l'asset.

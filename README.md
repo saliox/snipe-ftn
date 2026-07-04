@@ -110,20 +110,40 @@ sources**, pas un installeur `.exe`).
   - `UPDATE_REPO=owner/name` — autre dépôt GitHub.
   - `UPDATE_URL=http://ip:8770/` — flux HTTP local (LAN).
 
-### Publier une mise à jour (côté toi)
+### Publier une mise à jour (distribution LAN — configuration retenue)
+
+Rien n'est publié en public : les MAJ sont servies depuis ta machine sur le
+réseau local.
 
 ```bash
 # 1. bumpe la version dans package.json
-# 2. publie sur GitHub Releases (nécessite gh authentifié)
-npm run publish:update "notes de version"
+# 2. construis le feed local (release/snipe-ftn.zip + latest.json), sans GitHub
+npm run publish:update -- --local "notes de version"
 
-# — ou — servir un flux sur le LAN au lieu de GitHub :
-npm run serve:updates      # affiche l'UPDATE_URL à mettre dans le .env des clients
+# 3. sers le feed sur le LAN (affiche l'UPDATE_URL à coller chez les clients)
+npm run serve:updates
 ```
 
-> `publish:update` crée `release/snipe-ftn.zip` + `release/latest.json`, puis
-> pousse la release GitHub. Le premier `publish` crée le dépôt/la release si
-> besoin (via `gh`).
+Sur chaque **PC client**, mets dans son `.env` l'adresse affichée :
+
+```
+UPDATE_URL=http://<ip-de-ta-machine>:8770/
+```
+
+Ensuite, sur le client : `node src/index.js update` (ou l'avis automatique au
+prochain lancement) télécharge et applique la nouvelle version.
+
+> Le pare-feu Windows peut demander d'autoriser Node.js sur le réseau privé la
+> première fois que tu lances `serve:updates`.
+
+<details>
+<summary>Variante GitHub Releases (autonome, mais publique)</summary>
+
+Si un jour tu veux un canal autonome sans serveur : `npm run publish:update
+"notes"` (sans `--local`) crée `release/` puis publie une release GitHub via
+`gh` sur `saliox/snipe-ftn`. Le dépôt doit exister et être **public** pour que
+l'auto-update fonctionne sans token. Overrides via `.env` : `UPDATE_REPO`.
+</details>
 
 ## Architecture (miroir de snipe-mc)
 
