@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self';" />
+  <title>Fortnite Sniper</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="titlebar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <span class="title">FORTNITE&nbsp;SNIPER</span>
+      <span id="version" class="ver"></span>
+    </div>
+    <div class="head-actions">
+      <span id="conn" class="conn off">Non connecté</span>
+      <button id="btn-update" class="btn ghost sm" title="Vérifier les mises à jour">MAJ</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- Connexion -->
+    <section class="card span2">
+      <h2>Compte Epic</h2>
+      <div id="account-view" class="muted">Pas encore connecté.</div>
+      <div class="login-flow">
+        <button id="btn-login-url" class="btn">1 · Ouvrir la page Epic</button>
+        <input id="login-code" class="input grow" type="password" placeholder="2 · Colle l'authorizationCode ici" autocomplete="off" />
+        <button id="btn-login" class="btn primary">3 · Se connecter</button>
+      </div>
+      <p class="hint">Connecte-toi sur epicgames.com, ouvre la page, copie la valeur <code>authorizationCode</code> du JSON.</p>
+    </section>
+
+    <!-- Vérif -->
+    <section class="card">
+      <h2>Vérifier un pseudo</h2>
+      <div class="row">
+        <input id="check-name" class="input grow" placeholder="ex. Ninja" maxlength="16" />
+        <button id="btn-check" class="btn">Vérifier</button>
+      </div>
+      <div id="check-result" class="result"></div>
+    </section>
+
+    <!-- Horloge -->
+    <section class="card">
+      <h2>Horloge (NTP)</h2>
+      <div class="row">
+        <button id="btn-ntp" class="btn">Mesurer la dérive</button>
+        <div id="ntp-result" class="result grow"></div>
+      </div>
+      <p class="hint">Corrige la dérive de l'horloge Windows pour tirer au bon instant.</p>
+    </section>
+
+    <!-- Snipe -->
+    <section class="card span2">
+      <h2>Snipe</h2>
+      <div class="row">
+        <input id="snipe-name" class="input grow" placeholder="pseudo cible (3-16 car.)" maxlength="16" />
+        <div class="seg">
+          <button class="seg-btn active" data-mode="monitor">Surveillance</button>
+          <button class="seg-btn" data-mode="scheduled">Planifié</button>
+        </div>
+      </div>
+
+      <div id="scheduled-row" class="row hidden">
+        <label class="lbl">Instant du drop (heure locale)</label>
+        <input id="snipe-at" class="input" type="datetime-local" step="1" />
+      </div>
+
+      <div class="params">
+        <label>Burst<input id="p-burst" class="input tiny" type="number" value="6" min="1" max="30" /></label>
+        <label>Spacing ms<input id="p-spacing" class="input tiny" type="number" value="30" min="0" max="1000" /></label>
+        <label>Lead ms<input id="p-lead" class="input tiny" type="number" value="40" min="0" max="2000" /></label>
+        <label>Poll ms<input id="p-poll" class="input tiny" type="number" value="1000" min="200" max="10000" /></label>
+        <label>Connexions<input id="p-conn" class="input tiny" type="number" value="3" min="1" max="10" /></label>
+        <label class="chk"><input id="p-skipntp" type="checkbox" /> Sans NTP</label>
+      </div>
+
+      <div class="row">
+        <button id="btn-snipe" class="btn primary grow">Lancer le snipe</button>
+        <button id="btn-stop" class="btn danger" disabled>Arrêter</button>
+      </div>
+      <p class="hint">⚠ Epic : changement de pseudo limité à 1× / 2 semaines. Sois éligible avant de lancer.</p>
+    </section>
+
+    <!-- Console -->
+    <section class="card span2 console-card">
+      <div class="console-head">
+        <h2>Journal en direct</h2>
+        <button id="btn-clear" class="btn ghost sm">Vider</button>
+      </div>
+      <div id="console" class="console" role="log" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <!-- Overlay MAJ -->
+  <div id="update-modal" class="modal hidden">
+    <div class="modal-box">
+      <h3 id="update-title">Mise à jour</h3>
+      <p id="update-body" class="muted"></p>
+      <div class="modal-actions">
+        <button id="update-cancel" class="btn ghost">Fermer</button>
+        <button id="update-go" class="btn primary hidden">Installer &amp; redémarrer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

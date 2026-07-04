@@ -45,7 +45,23 @@ npm install
 cp .env.example .env   # puis édite si besoin (identifiants par défaut fournis)
 ```
 
-## Connexion
+## Interface graphique (recommandée)
+
+Une app de bureau (Electron) offre login Epic, vérif de pseudo, NTP, snipe
+(surveillance/planifié) avec **logs en direct**, et un bouton de mise à jour.
+
+```bash
+npm start
+```
+
+Dans la fenêtre : **1** ouvre la page Epic → **2** colle l'`authorizationCode` →
+**3** connecte-toi. Ensuite : vérifie un pseudo, ou lance un snipe en mode
+Surveillance ou Planifié. Le journal en bas affiche tout en temps réel.
+
+> Le CLI ci-dessous reste disponible pour un usage terminal/scripté ; les deux
+> partagent le même moteur et le même token chiffré.
+
+## Connexion (CLI)
 
 ```bash
 node src/index.js login
@@ -158,6 +174,9 @@ l'auto-update fonctionne sans token. Overrides via `.env` : `UPDATE_REPO`.
 | `src/update.js` | auto-update CLI (check + download + remplacement) |
 | `src/updatecore.js` | logique réseau de MAJ (GitHub/HTTP, SHA-256) |
 | `src/util.js` | logs, couleurs, sleep haute précision |
+| `gui/main.js` | processus principal Electron (IPC ↔ moteur) |
+| `gui/preload.cjs` | pont sécurisé renderer ↔ main |
+| `gui/renderer/` | interface (HTML/CSS/JS), logs en direct |
 | `scripts/publish-update.mjs` | construit le zip + publie la release |
 | `scripts/serve-updates.mjs` | sert les MAJ sur le LAN (flux HTTP) |
 

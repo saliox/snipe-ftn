@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "description": "Sniper de pseudos Fortnite / Epic Games — auth Epic OAuth, sync NTP, burst timing",
   "type": "module",
+  "main": "gui/main.js",
   "bin": {
     "snipeftn": "src/index.js"
   },
   "scripts": {
+    "start": "electron .",
     "cli": "node src/index.js",
     "login": "node src/index.js login",
     "check": "node src/index.js check",
@@ -21,5 +23,8 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "undici": "^6.19.8"
+  },
+  "devDependencies": {
+    "electron": "^31.3.1"
   }
 }

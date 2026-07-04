@@ -28,7 +28,7 @@ const zipPath = path.join(releaseDir, zipName);
 fs.mkdirSync(releaseDir, { recursive: true });
 fs.rmSync(zipPath, { force: true });
 
-const include = ['src', 'scripts', 'package.json', 'package-lock.json', 'README.md', '.env.example', '.gitignore']
+const include = ['src', 'gui', 'scripts', 'package.json', 'package-lock.json', 'README.md', '.env.example', '.gitignore']
   .filter((p) => fs.existsSync(path.join(root, p)))
   .map((p) => `'${path.join(root, p).replace(/'/g, "''")}'`)
   .join(',');
