@@ -1,0 +1,148 @@
+# snipe-ftn — sniper de pseudos Fortnite / Epic Games
+
+Équivalent Fortnite de `snipe-mc` : surveille un **display name Epic** et, dès
+qu'il se libère, tente de le réclamer sur **ton propre compte** avec une rafale
+de requêtes calibrée par NTP. Node ESM, zéro dépendance lourde (juste `undici`
+et `dotenv`).
+
+> ⚠️ **À lire avant de lancer.** À utiliser uniquement pour réclamer un pseudo
+> **libre** sur **ton** compte. Pas de vol de compte, pas de credential stuffing.
+
+## Différences importantes avec Minecraft
+
+Fortnite/Epic ne marche pas comme Mojang. Trois points à connaître :
+
+1. **Cooldown de 2 semaines.** Epic n'autorise qu'un changement de pseudo toutes
+   les 2 semaines. Le burst au moment du drop sert à **gagner la course** face
+   aux autres snipers, mais tu dois être **éligible** (hors cooldown) pour que
+   ça marche. Inutile de spammer : tu n'as qu'un essai utile par fenêtre.
+
+2. **Pas d'horaire de drop public.** Contrairement à MC (nom libéré ~37 jours
+   après un changement), Epic n'expose pas de « disponible à telle heure ».
+   → Le mode **`--monitor`** est le mode principal ici. `--at` reste dispo si tu
+   connais l'instant par un autre moyen.
+
+3. **Endpoint de changement à confirmer.** La vérif de disponibilité est fiable
+   (lookup public du display name). En revanche, l'endpoint de **changement** de
+   pseudo par token de jeu n'est pas documenté publiquement par Epic — voir la
+   note dans [`src/epicapi.js`](src/epicapi.js) (`changeDisplayName`). Le moteur
+   (timing, burst, monitor, alerte sonore) est prêt ; si l'auto-claim renvoie
+   401/403/404, capture la vraie requête depuis l'onglet **Réseau** du navigateur
+   pendant un changement manuel sur `epicgames.com/account/personal` et reporte
+   l'URL + le corps dans cette fonction. Le monitor t'alerte de toute façon en
+   une fraction de seconde pour réclamer à la main.
+
+> **CGU Epic.** L'échange de token s'appuie sur les identifiants d'un client de
+> jeu Epic (comme la quasi-totalité des outils Fortnite tiers). C'est une zone
+> grise vis-à-vis des conditions d'utilisation d'Epic. Tu l'utilises sur ton
+> compte, à tes risques.
+
+## Installation
+
+```bash
+cd "C:\Users\teamf\snipe ftn"
+npm install
+cp .env.example .env   # puis édite si besoin (identifiants par défaut fournis)
+```
+
+## Connexion
+
+```bash
+node src/index.js login
+```
+
+1. Connecte-toi sur https://www.epicgames.com dans ton navigateur.
+2. Ouvre l'URL affichée (`.../id/api/redirect?clientId=...&responseType=code`).
+3. Copie la valeur de `"authorizationCode"` du JSON et colle-la dans le terminal.
+
+Le token (access + refresh) est chiffré au repos via `securebox.js`
+(AES-256-GCM, clé liée à la machine + au compte utilisateur). Le refresh est
+automatique tant qu'il est valide.
+
+## Utilisation
+
+```bash
+# Vérifier si un pseudo est libre
+node src/index.js check MonPseudo
+
+# Mesurer la dérive d'horloge (NTP)
+node src/index.js time
+
+# Surveiller et réclamer dès que libre (mode principal)
+node src/index.js snipe MonPseudo --monitor
+
+# Snipe planifié si tu connais l'instant du drop (UTC)
+node src/index.js snipe MonPseudo --at 2026-07-10T15:00:00Z --burst 8
+
+# Mettre l'outil à jour (voir « Mise à jour automatique »)
+node src/index.js update           # installe la dernière version
+node src/index.js update --check   # vérifie seulement
+```
+
+### Options de snipe
+
+| Option | Défaut | Rôle |
+|---|---|---|
+| `--monitor` | — | surveille jusqu'à ce que le nom soit libre puis rafale |
+| `--at <ISO>` | — | instant du drop en UTC |
+| `--in <durée>` | — | drop relatif : `90s`, `15m`, `2h` |
+| `--burst <n>` | 6 | nombre de requêtes dans la rafale |
+| `--spacing <ms>` | 30 | espacement entre requêtes |
+| `--lead <ms>` | 40 | avance de la 1re requête sur T0 |
+| `--poll <ms>` | 1000 | intervalle de sondage en monitor |
+| `--connections <n>` | 3 | connexions TLS pré-chauffées |
+| `--skip-ntp` | — | ne pas synchroniser l'horloge |
+
+## Mise à jour automatique
+
+Même système que snipe-mc, adapté au CLI (l'asset de release est un **zip de
+sources**, pas un installeur `.exe`).
+
+- **Avis discret au démarrage** : à chaque commande (sauf `snipe`, chemin
+  critique), au plus **1×/24 h**, l'outil vérifie s'il existe une version plus
+  récente et affiche un simple avis. Non bloquant (timeout 2,5 s, silencieux si
+  hors-ligne).
+- **`node src/index.js update`** : télécharge la dernière release, vérifie le
+  **SHA-256**, extrait le zip, remplace les fichiers (sans toucher à `data/` ni
+  `.env`) et relance `npm install`. `--check` = vérifier sans installer.
+- **Source par défaut** : Releases GitHub de `saliox/snipe-ftn` (autonome, aucune
+  config). Overrides dans `.env` :
+  - `UPDATE_REPO=owner/name` — autre dépôt GitHub.
+  - `UPDATE_URL=http://ip:8770/` — flux HTTP local (LAN).
+
+### Publier une mise à jour (côté toi)
+
+```bash
+# 1. bumpe la version dans package.json
+# 2. publie sur GitHub Releases (nécessite gh authentifié)
+npm run publish:update "notes de version"
+
+# — ou — servir un flux sur le LAN au lieu de GitHub :
+npm run serve:updates      # affiche l'UPDATE_URL à mettre dans le .env des clients
+```
+
+> `publish:update` crée `release/snipe-ftn.zip` + `release/latest.json`, puis
+> pousse la release GitHub. Le premier `publish` crée le dépôt/la release si
+> besoin (via `gh`).
+
+## Architecture (miroir de snipe-mc)
+
+| Fichier | Rôle |
+|---|---|
+| `src/index.js` | CLI |
+| `src/auth.js` | OAuth Epic (authorizationCode + refresh) |
+| `src/epicapi.js` | dispo du display name, vérif, changement, validation |
+| `src/sniper.js` | moteur burst + monitor + timing NTP |
+| `src/ntp.js` | client SNTP (mesure de dérive d'horloge) |
+| `src/securebox.js` | chiffrement du token au repos |
+| `src/update.js` | auto-update CLI (check + download + remplacement) |
+| `src/updatecore.js` | logique réseau de MAJ (GitHub/HTTP, SHA-256) |
+| `src/util.js` | logs, couleurs, sleep haute précision |
+| `scripts/publish-update.mjs` | construit le zip + publie la release |
+| `scripts/serve-updates.mjs` | sert les MAJ sur le LAN (flux HTTP) |
+
+## Prochaines étapes possibles
+
+- Confirmer/brancher l'endpoint réel de changement de pseudo (voir plus haut).
+- GUI Electron (comme snipe-mc) : bus d'événements déjà présent dans `util.js`.
+- Support multi-comptes, proxies, alerte webhook Discord sur nom libéré.

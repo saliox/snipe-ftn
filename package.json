@@ -1,0 +1,25 @@
+{
+  "name": "snipe-ftn",
+  "version": "0.1.0",
+  "description": "Sniper de pseudos Fortnite / Epic Games — auth Epic OAuth, sync NTP, burst timing",
+  "type": "module",
+  "bin": {
+    "snipeftn": "src/index.js"
+  },
+  "scripts": {
+    "cli": "node src/index.js",
+    "login": "node src/index.js login",
+    "check": "node src/index.js check",
+    "time": "node src/index.js time",
+    "update": "node src/index.js update",
+    "publish:update": "node scripts/publish-update.mjs",
+    "serve:updates": "node scripts/serve-updates.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "undici": "^6.19.8"
+  }
+}
