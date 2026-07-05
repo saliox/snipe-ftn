@@ -123,6 +123,11 @@ label.lbl { color: var(--muted); font-size: 12px; }
 .badge.taken { color: #fff; background: #52407a; }
 .badge.err { color: #fff; background: var(--red); }
 
+/* Watchlist + alertes */
+textarea.input { resize: vertical; font-family: inherit; min-height: 42px; width: 100%; }
+.alert-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.alert-row .input { min-width: 200px; }
+
 /* Scanner : résultats en chips cliquables, colorés par tier */
 .scan-results { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 2px; max-height: 220px; overflow: auto; }
 .chip {

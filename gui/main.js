@@ -1,5 +1,5 @@
 // Processus principal Electron. Pont entre l'UI et le moteur de snipe Epic.
-import { app, BrowserWindow, ipcMain, shell, nativeImage, session, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, nativeImage, session, Menu, Notification } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -32,7 +32,8 @@ import { displayNameStatus, validName, nameChangeEligibility } from '../src/epic
 import { generateNames, spaceSize } from '../src/generate.js';
 import { rankNames } from '../src/score.js';
 import { bulkCheck, estimateScanMs } from '../src/bulk.js';
-import { snipe, requestStop } from '../src/sniper.js';
+import { setWebhookUrl, testAlert, alertsConfigured } from '../src/alerts.js';
+import { snipe, watchNames, requestStop } from '../src/sniper.js';
 import { bestOffset } from '../src/ntp.js';
 import { checkForUpdates, applyUpdate } from '../src/update.js';
 
@@ -192,11 +193,39 @@ ipcMain.handle('snipe', async (_e, opts) => {
       return { ok: true, multi: true, count: toks.length, winner: winner ? winner.label : null, results };
     }
 
-    const { accessToken, accountId } = await getValidToken();
-    const result = await snipe({ ...common, token: accessToken, accountId });
+    const { accessToken, accountId, displayName } = await getValidToken();
+    const result = await snipe({ ...common, token: accessToken, accountId, displayName, onFree: notifyFree });
     return { ok: true, result };
   } catch (e) { return { ok: false, error: e.message }; }
 });
+
+// Notification native Windows quand un nom se libère.
+function notifyFree(name) {
+  try { new Notification({ title: 'Nom libre !', body: `« ${name} » vient de se libérer`, urgency: 'critical' }).show(); }
+  catch { /* notifications indispo */ }
+}
+
+// --- Watchlist ---
+ipcMain.handle('watch-start', async (_e, opts) => {
+  try {
+    const { accessToken, accountId, displayName } = await getValidToken();
+    const names = (opts.names || []).map((s) => String(s).trim()).filter(Boolean);
+    if (!names.length) return { ok: false, error: 'Watchlist vide.' };
+    const result = await watchNames({
+      names, token: accessToken, accountId, displayName,
+      burst: opts.burst, volley: opts.volley, spacingMs: opts.spacingMs,
+      pollMs: opts.pollMs, connections: opts.connections,
+      diag: !!opts.diag, skipNtp: !!opts.skipNtp, onFree: notifyFree,
+    });
+    return { ok: true, result };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// --- Alertes Discord ---
+ipcMain.handle('alert-status', () => ({ ok: true, configured: alertsConfigured() }));
+ipcMain.handle('alert-set', (_e, url) => { try { setWebhookUrl(url); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle('alert-clear', () => { try { setWebhookUrl(''); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle('alert-test', async () => { try { return { ok: true, ...(await testAlert()) }; } catch (e) { return { ok: false, error: e.message }; } });
 
 ipcMain.handle('stop', () => { requestStop(); return { ok: true }; });
 

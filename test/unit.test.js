@@ -12,6 +12,7 @@ import { parseProxyList, makeProxyDispatchers, closeDispatchers, makeProxyPool }
 import { saveEncrypted, loadEncrypted } from '../src/securebox.js';
 import { generateNames, spaceSize, isDictWord } from '../src/generate.js';
 import { scoreName, rankNames } from '../src/score.js';
+import { setWebhookUrl, getWebhookUrl, alertsConfigured } from '../src/alerts.js';
 
 test('isNewer : compare des versions sémantiques', () => {
   assert.equal(isNewer('1.0.1', '1.0.0'), true);
@@ -83,6 +84,19 @@ test('scoreName : dico > prononçable > chiffres', () => {
   assert.equal(word.tier, 'S');
   const ranked = rankNames(['a1b2c', 'fire', 'zzz']);
   assert.equal(ranked[0].name, 'fire'); // le meilleur en tête
+});
+
+test('alerts : validation URL + round-trip webhook chiffré', () => {
+  process.env.SNIPE_DATA_DIR = path.join(os.tmpdir(), `alerts-${crypto.randomUUID()}`);
+  delete process.env.DISCORD_WEBHOOK_URL;
+  assert.throws(() => setWebhookUrl('http://pas-discord.com/x'), /invalide/);
+  const url = 'https://discord.com/api/webhooks/123456/abcDEF';
+  setWebhookUrl(url);
+  assert.equal(getWebhookUrl(), url);
+  assert.equal(alertsConfigured(), true);
+  setWebhookUrl('');
+  assert.equal(getWebhookUrl(), null);
+  assert.equal(alertsConfigured(), false);
 });
 
 test('makeProxyPool : rotation + éjection après échecs', () => {

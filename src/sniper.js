@@ -6,6 +6,7 @@ import { log, c, sleep, sleepUntil, fmtDuration } from './util.js';
 import { bestOffset } from './ntp.js';
 import { displayNameStatus } from './epicapi.js';
 import { makeProxyDispatchers, closeDispatchers } from './proxy.js';
+import { alertFreeName } from './alerts.js';
 
 const HOST = 'https://account-public-service-prod.ol.epicgames.com';
 
@@ -96,7 +97,7 @@ export async function snipe(opts) {
   const {
     name, token, accountId, dropAt, monitor = false,
     connections = 3, burst = 6, volley = 3, spacingMs = 30, leadMs = 40, pollMs = 1000,
-    proxies = null, diag = false, skipNtp = false,
+    proxies = null, diag = false, skipNtp = false, onFree = null, displayName = null,
   } = opts;
 
   stopFlag = false;
@@ -127,7 +128,7 @@ export async function snipe(opts) {
 
     if (monitor) {
       const r = await monitorLoop(pool, name, token, accountId,
-        { burst, volley, spacingMs, pollMs, dropAt, diag, metrics, pollDispatchers, getOffset: () => offset });
+        { burst, volley, spacingMs, pollMs, dropAt, diag, metrics, pollDispatchers, getOffset: () => offset, onFree, displayName });
       logSummary(metrics, offset, diag);
       return r;
     }
@@ -201,7 +202,7 @@ async function fireBurst(pool, name, token, accountId, { burst, volley, spacingM
 // passe libre. C'est le mode principal côté Epic (pas d'horaire de drop public).
 // Cadence adaptative : lente loin d'un drop connu, rapide dans la fenêtre du drop.
 async function monitorLoop(pool, name, token, accountId, opts) {
-  const { burst, volley, spacingMs, pollMs, dropAt, diag, metrics, pollDispatchers, getOffset } = opts;
+  const { burst, volley, spacingMs, pollMs, dropAt, diag, metrics, pollDispatchers, getOffset, onFree, displayName } = opts;
   log.step(`Surveillance de ${c.yellow}${name}${c.reset} (Ctrl+C pour arrêter)`);
   await warmup(pool, token, 2);
 
@@ -217,8 +218,10 @@ async function monitorLoop(pool, name, token, accountId, opts) {
       const detectedAt = Date.now();
       bell();
       log.ok(`${c.green}${name} est LIBRE — rafale !${c.reset}`);
+      if (onFree) { try { onFree(name); } catch { /* ignore */ } }
       const result = await fireBurst(pool, name, token, accountId, { burst, volley, spacingMs }, metrics);
       if (result.attempts[0]) log.info(`Latence détection→1er tir : ${Date.now() - detectedAt} ms`);
+      alertFreeName(name, { claimed: result.success, account: displayName }).catch(() => {});
       reportResult(result, name);
       return result;
     }
@@ -238,6 +241,80 @@ async function monitorLoop(pool, name, token, accountId, opts) {
   }
   log.warn('Surveillance arrêtée.');
   return { success: false, stopped: true, attempts: [] };
+}
+
+/**
+ * Watchlist : surveille PLUSIEURS display names à la fois et réclame le PREMIER
+ * qui se libère (tu ne peux tenir qu'un pseudo, donc on s'arrête au 1er gagné).
+ * Alerte Discord + cloche à la libération. Réutilise burst/volée/proxies/métriques.
+ * @param {object} opts { names[], token, accountId, displayName?, connections?, burst?,
+ *   volley?, spacingMs?, pollMs?, proxies?, diag?, skipNtp?, onFree? }
+ */
+export async function watchNames(opts) {
+  const {
+    names, token, accountId, displayName = null,
+    connections = 3, burst = 6, volley = 3, spacingMs = 30, pollMs = 1000,
+    proxies = null, diag = false, skipNtp = false, onFree = null,
+  } = opts;
+
+  const targets = [...new Set((names || []).map((n) => String(n).trim()).filter(Boolean))];
+  if (!targets.length) throw new Error('Watchlist vide.');
+
+  stopFlag = false;
+  const pool = new Pool(HOST, { connections, pipelining: 1 });
+  const pollDispatchers = (proxies && proxies.length) ? makeProxyDispatchers(proxies) : [];
+  const metrics = newMetrics();
+  let offset = 0;
+
+  try {
+    if (!skipNtp) {
+      log.step('Synchronisation NTP');
+      try { const o = await bestOffset(); offset = o.offset; log.ok(`Offset ${offset >= 0 ? '+' : ''}${offset.toFixed(1)} ms (via ${o.server}).`); }
+      catch (e) { log.warn(`NTP indisponible (${e.message}).`); }
+    }
+    log.step(`Watchlist : ${c.yellow}${targets.length}${c.reset} noms surveillés (Ctrl+C pour arrêter)`);
+    log.info(targets.join(', '));
+    await warmup(pool, token, Math.min(connections, 3));
+
+    const dispatchers = pollDispatchers.length ? pollDispatchers : [pool];
+    let di = 0, ti = 0;
+    // Chaque nom est sondé ~ tous les pollMs : on répartit sur le nombre de cibles.
+    const perPoll = Math.max(50, Math.round(pollMs / targets.length));
+
+    while (!stopFlag) {
+      const name = targets[ti++ % targets.length];
+      metrics.polls++;
+      const disp = dispatchers[di++ % dispatchers.length];
+      const st = await displayNameStatus(name, token, disp);
+
+      if (st.free === true) {
+        bell();
+        log.ok(`${c.green}« ${name} » est LIBRE — rafale !${c.reset}`);
+        if (onFree) { try { onFree(name); } catch { /* ignore */ } }
+        const result = await fireBurst(pool, name, token, accountId, { burst, volley, spacingMs }, metrics);
+        alertFreeName(name, { claimed: result.success, account: displayName }).catch(() => {});
+        reportResult(result, name);
+        logSummary(metrics, offset, diag);
+        return { ...result, name };
+      }
+      if (st.rateLimited) {
+        const wait = (st.retryAfter || 5) * 1000;
+        await sleep(dispatchers.length > 1 ? Math.min(wait, 800) : wait);
+        continue;
+      }
+      if (diag) log.info(`  ${name} → pris`);
+      else if (metrics.polls % (20 * targets.length) === 0) {
+        log.info(`...${targets.length} noms toujours pris (${metrics.polls} sondages)`);
+      }
+      await sleep(perPoll + Math.floor(Math.random() * Math.min(150, perPoll * 0.3)));
+    }
+    log.warn('Watchlist arrêtée.');
+    logSummary(metrics, offset, diag);
+    return { success: false, stopped: true, attempts: [] };
+  } finally {
+    await pool.close().catch(() => {});
+    await closeDispatchers(pollDispatchers);
+  }
 }
 
 // Cadence de sondage adaptative + jitter (évite un motif régulier détectable).

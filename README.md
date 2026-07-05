@@ -146,6 +146,26 @@ pour aller plus vite sans se faire rate-limiter. Dans le GUI : carte
 > (il ne réclame rien). Les proxies ne portent que la lecture, jamais ton token
 > de manière risquée — le tir de changement part toujours de ton IP.
 
+### Watchlist & alertes Discord
+
+Surveille **plusieurs** noms à la fois et réclame le **premier** qui se libère
+(tu ne peux tenir qu'un pseudo). Reçois une **alerte Discord** + une
+**notification Windows** dès qu'un nom se libère — pratique si l'auto-claim rate,
+tu réclames alors à la main en quelques secondes.
+
+```bash
+# Configurer l'alerte Discord (une fois) — webhook stocké chiffré
+node src/index.js alert set https://discord.com/api/webhooks/XXX/YYY
+node src/index.js alert test          # vérifier
+
+# Surveiller une liste et réclamer le 1er libre
+node src/index.js watch OG cool epic --proxies proxies.txt
+node src/index.js watch --file cibles.txt
+```
+
+Le webhook peut aussi venir de `.env` (`DISCORD_WEBHOOK_URL`). Dans le GUI :
+carte **« Watchlist & alertes »** (liste + champ webhook + Tester).
+
 ### Options de snipe
 
 | Option | Défaut | Rôle |
@@ -244,6 +264,7 @@ l'auto-update fonctionne sans token. Overrides via `.env` : `UPDATE_REPO`.
 | `src/generate.js` | générateur de pseudos candidats (+ dictionnaire) |
 | `src/bulk.js` | scan de dispo en masse (adaptatif AIMD + proxies) |
 | `src/score.js` | score de désirabilité (classe les libres) |
+| `src/alerts.js` | alertes Discord (webhook chiffré) + hook notif native |
 | `src/ntp.js` | client SNTP (mesure de dérive d'horloge) |
 | `src/securebox.js` | chiffrement du token au repos |
 | `src/update.js` | auto-update CLI (check + download + remplacement) |

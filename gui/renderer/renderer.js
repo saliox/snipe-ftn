@@ -299,10 +299,61 @@ function scanRunning(on) {
   $('btn-scan').textContent = on ? 'Scan en cours…' : 'Scanner les libres';
 }
 
+// --- Watchlist ---
+function watchListNames() {
+  return $('watch-names').value.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+}
+$('btn-watch').onclick = async () => {
+  const names = watchListNames();
+  if (!names.length) { pushLog({ level: 'warn', msg: 'Ajoute au moins un nom à surveiller.' }); return; }
+  watchRunning(true);
+  $('watch-progress').textContent = `${names.length} nom(s) surveillé(s)…`;
+  pushLog({ level: 'step', msg: `Watchlist : ${names.length} nom(s) surveillé(s).` });
+  const r = await api.watchStart({
+    names,
+    burst: intVal('p-burst', 6), volley: intVal('p-volley', 3),
+    spacingMs: intVal('p-spacing', 30), pollMs: intVal('p-poll', 1000),
+    connections: intVal('p-conn', 3), diag: $('p-diag').checked, skipNtp: $('p-skipntp').checked,
+  });
+  watchRunning(false);
+  $('watch-progress').textContent = '';
+  if (!r.ok) pushLog({ level: 'err', msg: `Watchlist : ${r.error}` });
+  else if (r.result?.success) pushLog({ level: 'ok', msg: `🎯 « ${r.result.name} » obtenu !` });
+  else if (r.result?.stopped) pushLog({ level: 'warn', msg: 'Watchlist arrêtée.' });
+};
+$('btn-watch-stop').onclick = async () => { await api.stop(); pushLog({ level: 'warn', msg: 'Arrêt demandé…' }); };
+function watchRunning(on) {
+  $('btn-watch').disabled = on;
+  $('btn-watch-stop').disabled = !on;
+  $('btn-watch').textContent = on ? 'Surveillance en cours…' : 'Surveiller la liste';
+}
+
+// --- Alertes Discord ---
+async function refreshAlertStatus() {
+  const r = await api.alertStatus();
+  const el = $('alert-status');
+  if (r.ok && r.configured) { el.textContent = 'Alertes : on'; el.className = 'conn on'; }
+  else { el.textContent = 'Alertes : off'; el.className = 'conn off'; }
+}
+$('btn-alert-save').onclick = async () => {
+  const url = $('alert-url').value.trim();
+  const r = await api.alertSet(url);
+  if (r.ok) { $('alert-url').value = ''; pushLog({ level: 'ok', msg: url ? 'Webhook enregistré (chiffré).' : 'Webhook retiré.' }); refreshAlertStatus(); }
+  else pushLog({ level: 'err', msg: r.error });
+};
+$('btn-alert-clear').onclick = async () => { await api.alertClear(); $('alert-url').value = ''; pushLog({ level: 'info', msg: 'Webhook retiré.' }); refreshAlertStatus(); };
+$('btn-alert-test').onclick = async () => {
+  const r = await api.alertTest();
+  if (r.ok) pushLog({ level: 'ok', msg: 'Test envoyé ✓ — vérifie ton salon Discord.' });
+  else if (r.skipped) pushLog({ level: 'warn', msg: 'Aucun webhook configuré (enregistre une URL d\'abord).' });
+  else pushLog({ level: 'err', msg: `Échec : ${r.error || 'HTTP ' + r.status}` });
+};
+
 // --- Init ---
 (async () => {
   try { const v = await api.appVersion(); $('version').textContent = 'v' + v; } catch {}
   refreshWhoami();
+  refreshAlertStatus();
 })();
 
 })();

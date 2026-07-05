@@ -13,7 +13,8 @@ import {
   listAccounts, removeAccount, setActive, allFreshTokens,
 } from './accounts.js';
 import { displayNameStatus, validName, nameChangeEligibility } from './epicapi.js';
-import { snipe } from './sniper.js';
+import { snipe, watchNames } from './sniper.js';
+import { setWebhookUrl, testAlert, alertsConfigured } from './alerts.js';
 import { bestOffset } from './ntp.js';
 import { runUpdate, maybeNotify } from './update.js';
 
@@ -55,6 +56,8 @@ ${c.yellow}Commandes :${c.reset}
   time                          Mesurer le décalage d'horloge NTP
   snipe <pseudo> --monitor      Surveiller et déclencher dès que libre (recommandé)
   snipe <pseudo> --at <ISO>     Snipe planifié à un instant précis (UTC)
+  watch <n1> <n2> … [--file f]  Surveiller PLUSIEURS noms, réclamer le 1er libre
+  alert [set <url>|test|clear]  Webhook Discord (alerte quand un nom se libère)
   update [--check]              Mettre à jour l'outil (--check = vérifier seulement)
 
 ${c.yellow}Options de snipe :${c.reset}
@@ -343,6 +346,63 @@ async function main() {
         } catch (e) { log.info(`(Éligibilité non vérifiable : ${e.message})`); }
 
         await snipe({ ...common, token: accessToken, accountId });
+        break;
+      }
+
+      case 'watch': {
+        const f = flags(argv.slice(1));
+        const { accessToken, accountId, displayName } = await getValidToken();
+
+        let names = f._;
+        if (f.file) {
+          try { names = readFileSync(f.file, 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean); }
+          catch (e) { log.err(`Fichier illisible : ${e.message}`); break; }
+        }
+        if (!names.length) { log.err('Usage : watch <nom1> <nom2> …  (ou --file liste.txt)'); break; }
+
+        let proxyList = null;
+        if (f.proxies) {
+          try { proxyList = parseProxyList(readFileSync(f.proxies, 'utf8')); log.info(`${proxyList.length} proxy(s) chargé(s).`); }
+          catch (e) { log.err(`Fichier proxies illisible : ${e.message}`); break; }
+        }
+
+        try {
+          const el = await nameChangeEligibility(accessToken, accountId);
+          if (!el.canUpdate) log.warn(`⚠ Cooldown actif${el.availableAt ? ` jusqu'au ${new Date(el.availableAt).toLocaleString('fr-FR')}` : ''} — le claim échouera, mais la surveillance/alerte continue.`);
+        } catch { /* ignore */ }
+
+        await watchNames({
+          names, token: accessToken, accountId, displayName,
+          burst: f.burst ? Number(f.burst) : undefined,
+          volley: f.volley ? Number(f.volley) : undefined,
+          spacingMs: f.spacing ? Number(f.spacing) : undefined,
+          pollMs: f.poll ? Number(f.poll) : undefined,
+          connections: f.connections ? Number(f.connections) : undefined,
+          proxies: proxyList,
+          diag: !!f.diag,
+          skipNtp: !!f['skip-ntp'],
+        });
+        break;
+      }
+
+      case 'alert': {
+        const sub = argv[1];
+        if (sub === 'set') {
+          if (!argv[2]) { log.err('Usage : alert set <url_webhook_discord>'); break; }
+          try { setWebhookUrl(argv[2]); log.ok('Webhook Discord enregistré (chiffré au repos).'); }
+          catch (e) { log.err(e.message); }
+        } else if (sub === 'clear') {
+          setWebhookUrl(''); log.ok('Webhook retiré.');
+        } else if (sub === 'test') {
+          if (!alertsConfigured()) { log.warn('Aucun webhook. Ajoute-en un : alert set <url>'); break; }
+          const r = await testAlert();
+          if (r.ok) log.ok('Test envoyé ✓ — vérifie ton salon Discord.');
+          else log.err(`Échec de l'envoi : ${r.error || 'HTTP ' + r.status}`);
+        } else {
+          log.info(alertsConfigured()
+            ? 'Webhook configuré ✓ (alert test pour vérifier, alert clear pour retirer).'
+            : 'Aucun webhook. « alert set <url> » pour recevoir une alerte Discord quand un nom se libère.');
+        }
         break;
       }
 

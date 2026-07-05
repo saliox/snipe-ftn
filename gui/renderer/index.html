@@ -93,6 +93,28 @@
       <p class="hint">⚠ Epic : changement de pseudo limité à 1× / 2 semaines. Sois éligible avant de lancer.</p>
     </section>
 
+    <!-- Watchlist + Alertes -->
+    <section class="card span2">
+      <h2>Watchlist &amp; alertes</h2>
+      <div class="row">
+        <textarea id="watch-names" class="input grow" rows="2" placeholder="Un nom par ligne (ou séparés par des virgules) — le 1er qui se libère est réclamé"></textarea>
+      </div>
+      <div class="row">
+        <button id="btn-watch" class="btn primary">Surveiller la liste</button>
+        <button id="btn-watch-stop" class="btn danger" disabled>Arrêter</button>
+        <div id="watch-progress" class="result grow muted"></div>
+      </div>
+
+      <div class="alert-row">
+        <span id="alert-status" class="conn off">Alertes : off</span>
+        <input id="alert-url" class="input grow" type="password" placeholder="URL webhook Discord (optionnel)" autocomplete="off" />
+        <button id="btn-alert-save" class="btn sm">Enregistrer</button>
+        <button id="btn-alert-test" class="btn ghost sm">Tester</button>
+        <button id="btn-alert-clear" class="btn ghost sm">Retirer</button>
+      </div>
+      <p class="hint">Reçois une alerte Discord + une notification Windows dès qu'un nom surveillé se libère.</p>
+    </section>
+
     <!-- Scanner -->
     <section class="card span2">
       <h2>Scanner de noms libres</h2>
