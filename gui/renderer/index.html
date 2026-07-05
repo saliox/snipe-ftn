@@ -23,15 +23,19 @@
   <main class="grid">
     <!-- Connexion -->
     <section class="card span2">
-      <h2>Compte Epic</h2>
+      <h2>Comptes Epic</h2>
       <div id="account-view" class="muted">Pas encore connecté.</div>
       <div id="eligibility" class="result" style="margin-top:6px"></div>
+
+      <div id="accounts-list" class="accounts"></div>
+
       <div class="login-flow">
         <button id="btn-login-url" class="btn">1 · Ouvrir la page Epic</button>
-        <input id="login-code" class="input grow" type="password" placeholder="2 · Colle l'authorizationCode ici" autocomplete="off" />
-        <button id="btn-login" class="btn primary">3 · Se connecter</button>
+        <input id="login-code" class="input grow" type="password" placeholder="2 · Colle l'authorizationCode" autocomplete="off" />
+        <input id="login-label" class="input" placeholder="Libellé (optionnel)" autocomplete="off" />
+        <button id="btn-login" class="btn primary">3 · Ajouter le compte</button>
       </div>
-      <p class="hint">Connecte-toi sur epicgames.com, ouvre la page, copie la valeur <code>authorizationCode</code> du JSON.</p>
+      <p class="hint">Connecte-toi sur epicgames.com, ouvre la page, copie la valeur <code>authorizationCode</code>. Répète pour ajouter plusieurs comptes.</p>
     </section>
 
     <!-- Vérif -->
@@ -76,6 +80,7 @@
         <label>Lead ms<input id="p-lead" class="input tiny" type="number" value="40" min="0" max="2000" /></label>
         <label>Poll ms<input id="p-poll" class="input tiny" type="number" value="1000" min="200" max="10000" /></label>
         <label>Connexions<input id="p-conn" class="input tiny" type="number" value="3" min="1" max="10" /></label>
+        <label class="chk"><input id="p-allaccounts" type="checkbox" /> Tous les comptes</label>
         <label class="chk"><input id="p-skipntp" type="checkbox" /> Sans NTP</label>
       </div>
 

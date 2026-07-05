@@ -9,7 +9,11 @@ contextBridge.exposeInMainWorld('api', {
   whoami: () => ipcRenderer.invoke('whoami'),
   eligibility: () => ipcRenderer.invoke('eligibility'),
   loginUrl: () => ipcRenderer.invoke('login-url'),
-  login: (code) => ipcRenderer.invoke('login', code),
+  login: (code, label) => ipcRenderer.invoke('login', code, label),
+
+  accountsList: () => ipcRenderer.invoke('accounts-list'),
+  accountRemove: (id) => ipcRenderer.invoke('account-remove', id),
+  accountActivate: (id) => ipcRenderer.invoke('account-activate', id),
 
   check: (name) => ipcRenderer.invoke('check', name),
   ntp: () => ipcRenderer.invoke('ntp'),

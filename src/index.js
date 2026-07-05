@@ -3,7 +3,10 @@
 import 'dotenv/config';
 import readline from 'node:readline';
 import { log, c } from './util.js';
-import { loginInteractive, getValidToken, cachedAccount } from './auth.js';
+import {
+  loginInteractive, getValidToken, cachedAccount,
+  listAccounts, removeAccount, setActive, allFreshTokens,
+} from './accounts.js';
 import { displayNameStatus, validName, nameChangeEligibility } from './epicapi.js';
 import { snipe } from './sniper.js';
 import { bestOffset } from './ntp.js';
@@ -40,6 +43,7 @@ ${c.cyan}snipe-ftn${c.reset} — sniper de pseudos Fortnite / Epic Games
 ${c.yellow}Commandes :${c.reset}
   login                         Se connecter au compte Epic (authorizationCode)
   whoami                        Afficher le compte connecté
+  accounts [list|add|use <id>|remove <id>]   Gérer les comptes (multi-comptes)
   check <pseudo>                Vérifier la disponibilité d'un display name
   time                          Mesurer le décalage d'horloge NTP
   snipe <pseudo> --monitor      Surveiller et déclencher dès que libre (recommandé)
@@ -55,6 +59,7 @@ ${c.yellow}Options de snipe :${c.reset}
   --lead <ms>       avance de la 1re requête sur le drop (def 40)
   --poll <ms>       intervalle de sondage en monitor (def 1000)
   --connections <n> connexions pré-chauffées (def 3)
+  --all-accounts    tirer depuis TOUS les comptes enregistrés en parallèle
   --skip-ntp        ne pas synchroniser l'horloge
 
 ${c.yellow}Exemples :${c.reset}
@@ -102,6 +107,31 @@ async function main() {
         break;
       }
 
+      case 'accounts': {
+        const sub = argv[1];
+        if (sub === 'add') {
+          const label = argv.slice(2).join(' ') || undefined;
+          await loginInteractive(() => prompt(`  Colle l'authorizationCode du NOUVEAU compte : `), label);
+        } else if (sub === 'remove') {
+          if (!argv[2]) { log.err('Usage : accounts remove <id>'); break; }
+          removeAccount(argv[2]); log.ok('Compte retiré.');
+        } else if (sub === 'use') {
+          if (!argv[2]) { log.err('Usage : accounts use <id>'); break; }
+          setActive(argv[2]); log.ok('Compte actif changé.');
+        } else if (sub && sub !== 'list') {
+          log.err(`Sous-commande inconnue : ${sub} (list | add | remove <id> | use <id>)`); break;
+        }
+        const { accounts } = listAccounts();
+        if (!accounts.length) { log.warn('Aucun compte. Ajoute-en un : node src/index.js accounts add'); break; }
+        log.step(`Comptes enregistrés (${accounts.length})`);
+        for (const a of accounts) {
+          const mark = a.active ? `${c.green}● actif${c.reset}` : `${c.gray}○     ${c.reset}`;
+          log.info(`${mark}  ${c.yellow}${a.displayName || a.label}${c.reset}  ${c.gray}${a.id}${c.reset}`);
+        }
+        log.info(`${c.gray}Snipe depuis tous : ajoute ${c.reset}--all-accounts${c.gray} à la commande snipe.${c.reset}`);
+        break;
+      }
+
       case 'time': {
         log.step('Mesure NTP');
         const o = await bestOffset();
@@ -136,17 +166,6 @@ async function main() {
         if (!validName(name)) { log.err('Pseudo invalide (Epic : 3-16 caractères).'); break; }
         const f = flags(argv.slice(2));
 
-        const { accessToken, accountId, displayName } = await getValidToken();
-        log.info(`Compte : ${c.green}${displayName || accountId}${c.reset} → cible ${c.yellow}${name}${c.reset}`);
-
-        // Pré-vérif d'éligibilité : évite de gâcher l'unique tentative si en cooldown.
-        try {
-          const el = await nameChangeEligibility(accessToken, accountId);
-          if (el.canUpdate) log.ok('Éligible au changement de pseudo ✓');
-          else log.warn(`⚠ Cooldown actif${el.availableAt ? ` jusqu'au ${new Date(el.availableAt).toLocaleString('fr-FR')}` : ''} — ` +
-            'le changement échouera tant qu\'il court (la surveillance, elle, continue).');
-        } catch (e) { log.info(`(Éligibilité non vérifiable : ${e.message})`); }
-
         let dropAt;
         if (f.at) {
           dropAt = Date.parse(f.at);
@@ -156,17 +175,13 @@ async function main() {
           if (ms == null) { log.err(`Durée --in invalide : ${f.in}`); break; }
           dropAt = Date.now() + ms;
         }
-
         if (!f.monitor && !dropAt) {
           log.err('Précise --monitor (surveillance) ou --at <ISO> / --in <durée> (planifié).');
           break;
         }
 
-        await snipe({
-          name,
-          token: accessToken,
-          accountId,
-          dropAt,
+        const common = {
+          name, dropAt,
           monitor: !!f.monitor,
           burst: f.burst ? Number(f.burst) : undefined,
           spacingMs: f.spacing ? Number(f.spacing) : undefined,
@@ -174,7 +189,36 @@ async function main() {
           pollMs: f.poll ? Number(f.poll) : undefined,
           connections: f.connections ? Number(f.connections) : undefined,
           skipNtp: !!f['skip-ntp'],
-        });
+        };
+
+        // --- Multi-comptes : tire depuis tous les comptes en parallèle ---
+        if (f['all-accounts']) {
+          const toks = await allFreshTokens();
+          if (!toks.length) { log.err('Aucun compte. Ajoute-en avec : node src/index.js accounts add'); break; }
+          log.step(`Snipe multi-comptes : ${toks.length} compte(s) → ${c.yellow}${name}${c.reset}`);
+          const runs = toks.map((t) =>
+            snipe({ ...common, token: t.accessToken, accountId: t.accountId })
+              .then((r) => ({ label: t.displayName || t.label, success: !!r.success }))
+              .catch((e) => ({ label: t.displayName || t.label, success: false, error: e.message })));
+          const results = await Promise.all(runs);
+          const winner = results.find((x) => x.success);
+          console.log('');
+          if (winner) log.ok(`${c.green}🎯 ${name} obtenu par le compte « ${winner.label} » !${c.reset}`);
+          else log.err(`Échec multi-comptes pour ${name}.`);
+          break;
+        }
+
+        // --- Compte unique (actif) ---
+        const { accessToken, accountId, displayName } = await getValidToken();
+        log.info(`Compte : ${c.green}${displayName || accountId}${c.reset} → cible ${c.yellow}${name}${c.reset}`);
+        try {
+          const el = await nameChangeEligibility(accessToken, accountId);
+          if (el.canUpdate) log.ok('Éligible au changement de pseudo ✓');
+          else log.warn(`⚠ Cooldown actif${el.availableAt ? ` jusqu'au ${new Date(el.availableAt).toLocaleString('fr-FR')}` : ''} — ` +
+            'le changement échouera tant qu\'il court (la surveillance, elle, continue).');
+        } catch (e) { log.info(`(Éligibilité non vérifiable : ${e.message})`); }
+
+        await snipe({ ...common, token: accessToken, accountId });
         break;
       }
 

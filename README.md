@@ -95,6 +95,29 @@ node src/index.js update           # installe la dernière version
 node src/index.js update --check   # vérifie seulement
 ```
 
+### Multi-comptes
+
+Enregistre plusieurs comptes Epic et tire depuis tous en parallèle pour
+maximiser tes chances de gagner la course sur un nom :
+
+```bash
+node src/index.js accounts add "Compte 2"   # ajoute un compte (colle son authorizationCode)
+node src/index.js accounts                   # liste (● = compte actif)
+node src/index.js accounts use <id>          # change de compte actif
+node src/index.js accounts remove <id>       # retire un compte
+
+# Snipe depuis TOUS les comptes à la fois :
+node src/index.js snipe MonPseudo --at 2026-07-10T15:00:00Z --all-accounts
+```
+
+Chaque compte stocke son *refresh token* chiffré ; l'access token est rafraîchi
+automatiquement au moment du snipe. Dans le GUI : ajoute les comptes dans la
+carte « Comptes Epic » et coche **Tous les comptes** avant de lancer.
+
+> En mode `--monitor`, `--all-accounts` fait sonder chaque compte séparément
+> (plus de pression sur le rate-limit). Pour du multi-comptes, le mode planifié
+> `--at` est préférable : tous les comptes tirent pile au drop.
+
 ### Options de snipe
 
 | Option | Défaut | Rôle |
@@ -107,6 +130,7 @@ node src/index.js update --check   # vérifie seulement
 | `--lead <ms>` | 40 | avance de la 1re requête sur T0 |
 | `--poll <ms>` | 1000 | intervalle de sondage en monitor |
 | `--connections <n>` | 3 | connexions TLS pré-chauffées |
+| `--all-accounts` | — | tire depuis tous les comptes enregistrés en parallèle |
 | `--skip-ntp` | — | ne pas synchroniser l'horloge |
 
 ## Mise à jour automatique
@@ -166,7 +190,8 @@ l'auto-update fonctionne sans token. Overrides via `.env` : `UPDATE_REPO`.
 | Fichier | Rôle |
 |---|---|
 | `src/index.js` | CLI |
-| `src/auth.js` | OAuth Epic (authorizationCode + refresh) |
+| `src/auth.js` | protocole OAuth Epic (échange de code, refresh) |
+| `src/accounts.js` | gestionnaire multi-comptes (store chiffré, refresh, actif) |
 | `src/epicapi.js` | dispo du display name, vérif, changement, validation |
 | `src/sniper.js` | moteur burst + monitor + timing NTP |
 | `src/ntp.js` | client SNTP (mesure de dérive d'horloge) |

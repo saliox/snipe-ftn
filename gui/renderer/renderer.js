@@ -43,6 +43,35 @@ async function refreshWhoami() {
   const r = await api.whoami();
   renderAccount(r.ok ? r.account : null);
   if (r.ok && r.account && r.account.accountId) refreshEligibility();
+  renderAccounts();
+}
+
+// Liste des comptes enregistrés (multi-comptes) : actif marqué, activer/retirer.
+async function renderAccounts() {
+  const box = $('accounts-list');
+  const r = await api.accountsList();
+  if (!r.ok || !r.accounts.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '';
+  for (const a of r.accounts) {
+    const row = document.createElement('div');
+    row.className = 'acct' + (a.active ? ' active' : '');
+    const name = document.createElement('span');
+    name.className = 'acct-name';
+    name.textContent = a.displayName || a.label;
+    const tag = document.createElement('span');
+    tag.className = 'acct-tag';
+    tag.textContent = a.active ? 'actif' : '';
+    const use = document.createElement('button');
+    use.className = 'btn ghost sm'; use.textContent = 'Activer';
+    use.disabled = a.active;
+    use.onclick = async () => { await api.accountActivate(a.id); await refreshWhoami(); };
+    const del = document.createElement('button');
+    del.className = 'btn ghost sm'; del.textContent = '✕';
+    del.title = 'Retirer';
+    del.onclick = async () => { await api.accountRemove(a.id); await refreshWhoami(); };
+    row.append(name, tag, use, del);
+    box.appendChild(row);
+  }
 }
 
 // Affiche l'éligibilité au changement de pseudo (cooldown 2 semaines).
@@ -66,17 +95,20 @@ $('btn-login-url').onclick = async () => {
 
 $('btn-login').onclick = async () => {
   const code = $('login-code').value.trim();
+  const label = $('login-label').value.trim();
   if (!code) { pushLog({ level: 'warn', msg: 'Colle d\'abord l\'authorizationCode.' }); return; }
   setBusy($('btn-login'), true);
-  const r = await api.login(code);
+  const r = await api.login(code, label || undefined);
   setBusy($('btn-login'), false);
   if (r.ok) {
     $('login-code').value = '';
+    $('login-label').value = '';
     renderAccount(r.account);
     refreshEligibility();
-    pushLog({ level: 'ok', msg: `Connecté : ${r.account?.displayName || r.account?.accountId}` });
+    renderAccounts();
+    pushLog({ level: 'ok', msg: `Compte ajouté : ${r.account?.displayName || r.account?.accountId}` });
   } else {
-    pushLog({ level: 'err', msg: `Login échoué : ${r.error}` });
+    pushLog({ level: 'err', msg: `Ajout échoué : ${r.error}` });
   }
 };
 
@@ -132,6 +164,7 @@ $('btn-snipe').onclick = async () => {
     leadMs: intVal('p-lead', 40),
     pollMs: intVal('p-poll', 1000),
     connections: intVal('p-conn', 3),
+    allAccounts: $('p-allaccounts').checked,
     skipNtp: $('p-skipntp').checked,
   };
 
@@ -147,7 +180,10 @@ $('btn-snipe').onclick = async () => {
   const r = await api.snipe(opts);
   running(false);
   if (!r.ok) pushLog({ level: 'err', msg: r.error });
-  else if (r.result?.success) pushLog({ level: 'ok', msg: `🎯 ${name} obtenu !` });
+  else if (r.multi) {
+    if (r.winner) pushLog({ level: 'ok', msg: `🎯 ${name} obtenu par le compte « ${r.winner} » !` });
+    else pushLog({ level: 'err', msg: `Échec multi-comptes (${r.count} compte(s)) pour ${name}.` });
+  } else if (r.result?.success) pushLog({ level: 'ok', msg: `🎯 ${name} obtenu !` });
 };
 
 $('btn-stop').onclick = async () => { await api.stop(); pushLog({ level: 'warn', msg: 'Arrêt demandé…' }); };

@@ -96,7 +96,14 @@ label.lbl { color: var(--muted); font-size: 12px; }
 
 /* Login */
 .login-flow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
-.login-flow .input { min-width: 220px; }
+.login-flow .input { min-width: 180px; }
+
+/* Liste des comptes (multi-comptes) */
+.accounts { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.acct { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #0c0819; }
+.acct.active { border-color: rgba(75,139,255,.5); box-shadow: 0 0 10px rgba(75,139,255,.12); }
+.acct-name { flex: 1 1 auto; font-weight: 600; font-size: 13px; }
+.acct-tag { font-size: 11px; color: var(--lime); min-width: 34px; }
 
 /* Segments (mode) */
 .seg { display: inline-flex; background: #0c0819; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }

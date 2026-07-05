@@ -23,7 +23,11 @@ function loadEnv() {
 loadEnv();
 
 import { bus } from '../src/util.js';
-import { loginInteractive, getValidToken, cachedAccount, authCodeUrl } from '../src/auth.js';
+import { authCodeUrl } from '../src/auth.js';
+import {
+  loginInteractive, getValidToken, cachedAccount,
+  listAccounts, removeAccount, setActive, allFreshTokens,
+} from '../src/accounts.js';
 import { displayNameStatus, validName, nameChangeEligibility } from '../src/epicapi.js';
 import { snipe, requestStop } from '../src/sniper.js';
 import { bestOffset } from '../src/ntp.js';
@@ -125,13 +129,18 @@ ipcMain.handle('login-url', () => {
   return url;
 });
 
-ipcMain.handle('login', async (_e, code) => {
+ipcMain.handle('login', async (_e, code, label) => {
   try {
     if (typeof code !== 'string' || !code.trim()) throw new Error('authorizationCode vide.');
-    await loginInteractive(async () => code);
+    await loginInteractive(async () => code, label);
     return { ok: true, account: cachedAccount() };
   } catch (e) { return { ok: false, error: e.message }; }
 });
+
+// --- Multi-comptes ---
+ipcMain.handle('accounts-list', () => { try { return { ok: true, ...listAccounts() }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle('account-remove', (_e, id) => { try { return { ok: true, ...removeAccount(id) }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle('account-activate', (_e, id) => { try { return { ok: true, ...setActive(id) }; } catch (e) { return { ok: false, error: e.message }; } });
 
 // --- Vérif de disponibilité ---
 ipcMain.handle('check', async (_e, name) => {
@@ -153,11 +162,8 @@ ipcMain.handle('ntp', async () => {
 ipcMain.handle('snipe', async (_e, opts) => {
   try {
     if (!validName(opts.name)) return { ok: false, error: 'Pseudo invalide (Epic : 3-16 caractères).' };
-    const { accessToken, accountId } = await getValidToken();
-    const result = await snipe({
+    const common = {
       name: opts.name,
-      token: accessToken,
-      accountId,
       dropAt: opts.dropAt || undefined,
       monitor: !!opts.monitor,
       burst: opts.burst,
@@ -166,7 +172,23 @@ ipcMain.handle('snipe', async (_e, opts) => {
       pollMs: opts.pollMs,
       connections: opts.connections,
       skipNtp: !!opts.skipNtp,
-    });
+    };
+
+    // Multi-comptes : tire depuis tous les comptes enregistrés en parallèle.
+    if (opts.allAccounts) {
+      const toks = await allFreshTokens();
+      if (!toks.length) return { ok: false, error: 'Aucun compte enregistré.' };
+      bus.emit('log', { level: 'step', msg: `Snipe multi-comptes : ${toks.length} compte(s)`, t: Date.now() });
+      const results = await Promise.all(toks.map((t) =>
+        snipe({ ...common, token: t.accessToken, accountId: t.accountId })
+          .then((r) => ({ label: t.displayName || t.label, success: !!r.success }))
+          .catch((e) => ({ label: t.displayName || t.label, success: false, error: e.message }))));
+      const winner = results.find((x) => x.success) || null;
+      return { ok: true, multi: true, count: toks.length, winner: winner ? winner.label : null, results };
+    }
+
+    const { accessToken, accountId } = await getValidToken();
+    const result = await snipe({ ...common, token: accessToken, accountId });
     return { ok: true, result };
   } catch (e) { return { ok: false, error: e.message }; }
 });
