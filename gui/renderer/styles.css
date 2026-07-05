@@ -123,6 +123,22 @@ label.lbl { color: var(--muted); font-size: 12px; }
 .badge.taken { color: #fff; background: #52407a; }
 .badge.err { color: #fff; background: var(--red); }
 
+/* Scanner : résultats en chips cliquables, colorés par tier */
+.scan-results { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 2px; max-height: 220px; overflow: auto; }
+.chip {
+  -webkit-app-region: no-drag; cursor: pointer; user-select: text;
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 10px; font-size: 13px; font-weight: 600;
+  background: #0c0819; color: var(--text);
+  transition: transform .05s ease, box-shadow .15s ease;
+}
+.chip:hover { transform: translateY(-1px); box-shadow: 0 0 10px rgba(120,90,255,.3); }
+.chip.tier-S { border-color: var(--lime); color: var(--lime); }
+.chip.tier-A { border-color: var(--cyan); color: var(--cyan); }
+.chip.tier-B { border-color: var(--blue); color: #cfe0ff; }
+.chip.tier-C { border-color: #6a5a2a; color: var(--yellow); }
+.chip.tier-D { border-color: var(--line); color: var(--muted); }
+
 /* Console */
 .console-card { display: flex; flex-direction: column; }
 .console-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }

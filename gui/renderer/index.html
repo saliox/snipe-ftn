@@ -93,6 +93,41 @@
       <p class="hint">⚠ Epic : changement de pseudo limité à 1× / 2 semaines. Sois éligible avant de lancer.</p>
     </section>
 
+    <!-- Scanner -->
+    <section class="card span2">
+      <h2>Scanner de noms libres</h2>
+      <div class="params">
+        <label>Mode
+          <select id="s-mode" class="input tiny" style="width:130px">
+            <option value="random">aléatoire</option>
+            <option value="pronounceable">prononçable</option>
+            <option value="dict">dictionnaire</option>
+            <option value="pattern">gabarit</option>
+          </select>
+        </label>
+        <label>Longueur<input id="s-length" class="input tiny" type="number" value="3" min="3" max="16" /></label>
+        <label>Charset
+          <select id="s-charset" class="input tiny" style="width:110px">
+            <option value="alpha">lettres</option>
+            <option value="alphanum">lettres+chiffres</option>
+            <option value="full">+underscore</option>
+          </select>
+        </label>
+        <label>Nombre<input id="s-count" class="input tiny" type="number" value="300" min="1" max="50000" /></label>
+        <label id="s-pattern-wrap" class="hidden">Gabarit<input id="s-pattern" class="input tiny" style="width:120px" placeholder="??#" /></label>
+        <label class="chk"><input id="s-og" type="checkbox" /> OG</label>
+        <label class="chk"><input id="s-norepeat" type="checkbox" /> Sans doublon</label>
+        <label>Score min<input id="s-minscore" class="input tiny" type="number" value="0" min="0" max="100" /></label>
+      </div>
+      <div class="row">
+        <button id="btn-scan" class="btn primary">Scanner les libres</button>
+        <button id="btn-scan-stop" class="btn danger" disabled>Arrêter</button>
+        <div id="scan-progress" class="result grow muted"></div>
+      </div>
+      <div id="scan-results" class="scan-results"></div>
+      <p class="hint">Trouve les display names <b>déjà libres</b> et les classe par désirabilité. Clique un résultat pour le mettre en cible de snipe.</p>
+    </section>
+
     <!-- Console -->
     <section class="card span2 console-card">
       <div class="console-head">

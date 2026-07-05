@@ -8,8 +8,10 @@ import crypto from 'node:crypto';
 import { isNewer } from '../src/updatecore.js';
 import { validName } from '../src/epicapi.js';
 import { fmtDuration } from '../src/util.js';
-import { parseProxyList, makeProxyDispatchers, closeDispatchers } from '../src/proxy.js';
+import { parseProxyList, makeProxyDispatchers, closeDispatchers, makeProxyPool } from '../src/proxy.js';
 import { saveEncrypted, loadEncrypted } from '../src/securebox.js';
+import { generateNames, spaceSize, isDictWord } from '../src/generate.js';
+import { scoreName, rankNames } from '../src/score.js';
 
 test('isNewer : compare des versions sémantiques', () => {
   assert.equal(isNewer('1.0.1', '1.0.0'), true);
@@ -54,4 +56,43 @@ test('securebox : round-trip chiffré', () => {
   saveEncrypted(file, obj);
   assert.deepEqual(loadEncrypted(file), obj);
   assert.equal(loadEncrypted(path.join(os.tmpdir(), 'nope-does-not-exist.enc')), null);
+});
+
+test('generateNames : longueur, quantité, filtre OG', () => {
+  const og = generateNames({ mode: 'random', length: 4, charset: 'alphanum', count: 30, filters: { og: true } });
+  assert.ok(og.length > 0 && og.length <= 30);
+  assert.ok(og.every((n) => /^[a-z]{4}$/.test(n)), 'OG = 4 lettres exactement, sans chiffre');
+  const dict = generateNames({ mode: 'dict', length: 4, count: 5 });
+  assert.ok(dict.every((w) => w.length === 4 && isDictWord(w)));
+  // Unicité (pas de doublon dans la sortie aléatoire).
+  const rnd = generateNames({ mode: 'random', length: 5, count: 100 });
+  assert.equal(new Set(rnd).size, rnd.length);
+});
+
+test('spaceSize : taille de l\'espace', () => {
+  assert.equal(spaceSize(3, 'alpha'), 26 ** 3);
+  assert.equal(spaceSize(2, 'alpha'), 26 ** 3); // borné à 3 min
+});
+
+test('scoreName : dico > prononçable > chiffres', () => {
+  const word = scoreName('fire');   // mot du dico, 4 lettres
+  const pron = scoreName('bnfpx');  // pas prononçable
+  const digit = scoreName('a1b2');  // chiffres
+  assert.ok(word.score > pron.score);
+  assert.ok(word.score > digit.score);
+  assert.equal(word.tier, 'S');
+  const ranked = rankNames(['a1b2c', 'fire', 'zzz']);
+  assert.equal(ranked[0].name, 'fire'); // le meilleur en tête
+});
+
+test('makeProxyPool : rotation + éjection après échecs', () => {
+  const pool = makeProxyPool(['1.1.1.1:80', '2.2.2.2:80', '3.3.3.3:80'], { ejectAfter: 2 });
+  assert.equal(pool.size, 3);
+  assert.equal(pool.aliveCount(), 3);
+  const a = pool.next(); const b = pool.next();
+  assert.notEqual(a, b); // rotation
+  pool.penalize(a); pool.penalize(a); // 2 échecs -> éjecté
+  assert.equal(pool.aliveCount(), 2);
+  pool.reward(b); // remet à zéro (pas d'effet néfaste)
+  assert.equal(pool.aliveCount(), 2);
 });

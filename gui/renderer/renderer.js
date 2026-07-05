@@ -231,6 +231,74 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// --- Scanner de noms libres ---
+let scanFree = []; // libres trouvés pendant le scan en cours
+
+$('s-mode').addEventListener('change', () => {
+  $('s-pattern-wrap').classList.toggle('hidden', $('s-mode').value !== 'pattern');
+});
+
+function scanOpts() {
+  return {
+    mode: $('s-mode').value,
+    length: intVal('s-length', 3),
+    charset: $('s-charset').value,
+    count: intVal('s-count', 300),
+    pattern: $('s-pattern').value.trim(),
+    filters: { og: $('s-og').checked, noRepeat: $('s-norepeat').checked },
+  };
+}
+
+function tierClass(t) { return `tier-${t}`; }
+
+function addFreeItem(name, score, tier) {
+  const el = document.createElement('button');
+  el.className = `chip ${tierClass(tier)}`;
+  el.title = `score ${score} — clique pour cibler ce nom`;
+  el.textContent = name;
+  el.onclick = () => { $('snipe-name').value = name; $('snipe-name').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  $('scan-results').appendChild(el);
+}
+
+api.onScanResult((r) => {
+  if (r.state !== 'free') return;
+  scanFree.push(r.name);
+  addFreeItem(r.name, '?', 'B'); // provisoire (re-trié à la fin)
+});
+api.onScanStats((s) => {
+  const eta = s.etaMs != null ? Math.round(s.etaMs / 1000) + 's' : '?';
+  $('scan-progress').textContent =
+    `${s.done}/${s.total} · ${s.free} libres · ${s.rate.toFixed(1)}/s · ETA ${eta}` +
+    (s.proxiesTotal ? ` · proxies ${s.proxiesAlive}/${s.proxiesTotal}` : '') +
+    (s.throttled ? ' · throttling…' : '');
+});
+
+$('btn-scan').onclick = async () => {
+  scanFree = [];
+  $('scan-results').innerHTML = '';
+  scanRunning(true);
+  pushLog({ level: 'step', msg: 'Scan de noms libres lancé…' });
+  const r = await api.scanStart(scanOpts());
+  scanRunning(false);
+  if (!r.ok) { pushLog({ level: 'err', msg: `Scan : ${r.error}` }); return; }
+  // Rendu final trié par score, filtré par score min.
+  const minScore = intVal('s-minscore', 0);
+  const ranked = (r.ranked || []).filter((x) => x.score >= minScore);
+  $('scan-results').innerHTML = '';
+  for (const x of ranked) addFreeItem(x.name, x.score, x.tier);
+  const su = r.summary;
+  pushLog({ level: 'ok', msg: `Scan terminé : ${su.free} libres / ${su.checked} vérifiés (${su.taken} pris).` });
+  $('scan-progress').textContent = `${su.free} libres · ${ranked.length} affichés (score ≥ ${minScore})`;
+};
+
+$('btn-scan-stop').onclick = async () => { await api.scanStop(); pushLog({ level: 'warn', msg: 'Scan : arrêt demandé…' }); };
+
+function scanRunning(on) {
+  $('btn-scan').disabled = on;
+  $('btn-scan-stop').disabled = !on;
+  $('btn-scan').textContent = on ? 'Scan en cours…' : 'Scanner les libres';
+}
+
 // --- Init ---
 (async () => {
   try { const v = await api.appVersion(); $('version').textContent = 'v' + v; } catch {}

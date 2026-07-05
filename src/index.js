@@ -2,8 +2,11 @@
 // CLI du sniper de pseudos Fortnite / Epic Games.
 import 'dotenv/config';
 import readline from 'node:readline';
-import { readFileSync } from 'node:fs';
-import { parseProxyList } from './proxy.js';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { parseProxyList, makeProxyPool } from './proxy.js';
+import { generateNames, spaceSize } from './generate.js';
+import { scoreName, rankNames } from './score.js';
+import { bulkCheck, estimateScanMs } from './bulk.js';
 import { log, c } from './util.js';
 import {
   loginInteractive, getValidToken, cachedAccount,
@@ -47,6 +50,8 @@ ${c.yellow}Commandes :${c.reset}
   whoami                        Afficher le compte connecté
   accounts [list|add|use <id>|remove <id>]   Gérer les comptes (multi-comptes)
   check <pseudo>                Vérifier la disponibilité d'un display name
+  gen [options]                 Générer des pseudos candidats (sans réseau)
+  scan [options]                Générer + scanner en masse les noms LIBRES
   time                          Mesurer le décalage d'horloge NTP
   snipe <pseudo> --monitor      Surveiller et déclencher dès que libre (recommandé)
   snipe <pseudo> --at <ISO>     Snipe planifié à un instant précis (UTC)
@@ -67,11 +72,27 @@ ${c.yellow}Options de snipe :${c.reset}
   --diag            journal détaillé + résumé de métriques (RTT, 429…)
   --skip-ntp        ne pas synchroniser l'horloge
 
+${c.yellow}Options de gen / scan :${c.reset}
+  --mode <m>        random | pronounceable | pattern | dict (def random)
+  --length <n>      longueur des noms générés (def 3)
+  --charset <c>     alpha | alphanum | full (def alpha)
+  --pattern <p>     gabarit : ? = lettre, # = chiffre, * = alphanum, reste littéral
+  --count <n>       nb de noms à générer (def 50)
+  --og              OG uniquement (lettres, pas de chiffre/underscore)
+  --no-repeat       pas de lettre doublée d'affilée (aa, bb…)
+  --file <f>        scanner une liste .txt existante (au lieu de générer)
+  --proxies <f>     répartir le scan sur des proxies (host:port par ligne)
+  --min-score <n>   ne garder que les libres au score ≥ n (scan)
+  --out <f>         écrire les résultats dans un fichier
+  --rank            (gen) trier par score de désirabilité
+
 ${c.yellow}Exemples :${c.reset}
   node src/index.js login
   node src/index.js check Ninja
+  node src/index.js gen --mode dict --length 4 --count 30 --rank
+  node src/index.js scan --length 3 --charset alpha --count 500 --og --min-score 60
+  node src/index.js scan --file mes-noms.txt --proxies proxies.txt --out libres.txt
   node src/index.js snipe MonPseudo --monitor
-  node src/index.js snipe MonPseudo --at 2026-07-10T15:00:00Z --burst 8
 
 ${c.yellow}Note :${c.reset} le changement de pseudo Epic a un cooldown de 2 semaines ; assure-toi
 d'être éligible avant de sniper. Voir README.md.
@@ -85,6 +106,21 @@ function parseDuration(s) {
   const mult = { ms: 1, s: 1000, m: 60000, h: 3600000 }[m[2] || 's'];
   return n * mult;
 }
+
+// Options de génération depuis les --flags (partagé par gen et scan).
+function genOptsFromFlags(f) {
+  return {
+    mode: f.mode || 'random',
+    length: f.length ? Number(f.length) : 3,
+    charset: f.charset || 'alpha',
+    pattern: f.pattern || '',
+    count: f.count ? Number(f.count) : 50,
+    exhaustive: !!f.exhaustive,
+    filters: { og: !!f.og, noRepeat: !!f['no-repeat'] },
+  };
+}
+
+const tierColor = (t) => ({ S: c.green, A: c.cyan, B: c.blue, C: c.yellow, D: c.gray }[t] || c.reset);
 
 async function main() {
   try {
@@ -162,6 +198,78 @@ async function main() {
         } catch (e) {
           log.err(`Vérif impossible : ${e.message}`);
         }
+        break;
+      }
+
+      case 'gen': {
+        const f = flags(argv.slice(1));
+        const names = generateNames(genOptsFromFlags(f));
+        if (!names.length) { log.warn('Aucun nom généré (vérifie mode/pattern).'); break; }
+        const ranked = f.rank ? rankNames(names) : names.map((n) => ({ name: n }));
+        for (const r of ranked) {
+          const s = r.tier ? ` ${tierColor(r.tier)}[${r.tier} ${r.score}]${c.reset}` : '';
+          console.log(`${r.name}${s}`);
+        }
+        if (f.out) { writeFileSync(f.out, ranked.map((r) => r.name).join('\n') + '\n'); log.ok(`${ranked.length} noms écrits dans ${f.out}`); }
+        else log.info(`${ranked.length} noms générés.`);
+        break;
+      }
+
+      case 'scan': {
+        const f = flags(argv.slice(1));
+        const { accessToken } = await getValidToken();
+
+        // Source : fichier de noms, ou génération.
+        let names;
+        if (f.file) {
+          try { names = readFileSync(f.file, 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean); }
+          catch (e) { log.err(`Fichier illisible : ${e.message}`); break; }
+          log.info(`${names.length} noms chargés depuis ${f.file}.`);
+        } else {
+          const gopts = genOptsFromFlags(f);
+          names = generateNames(gopts);
+          log.info(`${names.length} noms générés (mode ${gopts.mode}, longueur ${gopts.length}).`);
+        }
+        if (!names.length) { log.warn('Rien à scanner.'); break; }
+
+        let pool = null;
+        if (f.proxies) {
+          try { pool = makeProxyPool(parseProxyList(readFileSync(f.proxies, 'utf8'))); log.info(`${pool.size} proxy(s) chargé(s).`); }
+          catch (e) { log.err(`Fichier proxies illisible : ${e.message}`); break; }
+        }
+
+        const minInterval = f['min-interval'] ? Number(f['min-interval']) : undefined;
+        log.step(`Scan de ${names.length} noms (ETA ~${fmtDuration(estimateScanMs(names.length, minInterval))})`);
+        let lastStat = 0;
+        const summary = await bulkCheck(names, {
+          token: accessToken, proxyPool: pool, minIntervalMs: minInterval,
+          onResult: (r) => { if (r.state === 'free') log.ok(`${c.green}LIBRE${c.reset} ${r.name}`); },
+          onStats: (s) => {
+            const now = Date.now();
+            if (now - lastStat < 1000) return;
+            lastStat = now;
+            const eta = s.etaMs != null ? fmtDuration(s.etaMs) : '?';
+            process.stdout.write(`  ${s.done}/${s.total} · ${s.free} libres · ${s.rate.toFixed(1)}/s · ETA ${eta}` +
+              (s.proxiesTotal ? ` · proxies ${s.proxiesAlive}/${s.proxiesTotal}` : '') + '   \r');
+          },
+        });
+        if (pool) await pool.close();
+        process.stdout.write('\n');
+
+        // Résultats : classe les libres par score, filtre --min-score.
+        const minScore = f['min-score'] ? Number(f['min-score']) : 0;
+        const ranked = rankNames(summary.freeList).filter((r) => r.score >= minScore);
+        console.log('');
+        log.ok(`${summary.free} libres / ${summary.checked} vérifiés ` +
+          `(${summary.taken} pris, ${summary.errors} erreurs) en ${fmtDuration(summary.elapsedMs)}.`);
+        if (ranked.length) {
+          log.step(`Meilleurs noms libres${minScore ? ` (score ≥ ${minScore})` : ''} :`);
+          for (const r of ranked.slice(0, 40)) {
+            console.log(`  ${tierColor(r.tier)}[${r.tier} ${String(r.score).padStart(3)}]${c.reset} ${r.name}`);
+          }
+          if (ranked.length > 40) log.info(`…et ${ranked.length - 40} autres.`);
+        }
+        if (f.out && ranked.length) { writeFileSync(f.out, ranked.map((r) => r.name).join('\n') + '\n'); log.ok(`Libres écrits dans ${f.out}`); }
         break;
       }
 

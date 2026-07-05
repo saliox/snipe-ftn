@@ -29,6 +29,9 @@ import {
   listAccounts, removeAccount, setActive, allFreshTokens,
 } from '../src/accounts.js';
 import { displayNameStatus, validName, nameChangeEligibility } from '../src/epicapi.js';
+import { generateNames, spaceSize } from '../src/generate.js';
+import { rankNames } from '../src/score.js';
+import { bulkCheck, estimateScanMs } from '../src/bulk.js';
 import { snipe, requestStop } from '../src/sniper.js';
 import { bestOffset } from '../src/ntp.js';
 import { checkForUpdates, applyUpdate } from '../src/update.js';
@@ -196,3 +199,39 @@ ipcMain.handle('snipe', async (_e, opts) => {
 });
 
 ipcMain.handle('stop', () => { requestStop(); return { ok: true }; });
+
+// --- Générateur + scanner en masse ---
+let scanStopFlag = false;
+
+ipcMain.handle('generate', (_e, opts) => {
+  try {
+    const names = generateNames(opts || {});
+    return { ok: true, names, sample: names.slice(0, 12), space: spaceSize(opts?.length || 3, opts?.charset || 'alpha') };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+ipcMain.handle('scan-stop', () => { scanStopFlag = true; return { ok: true }; });
+
+ipcMain.handle('scan-start', async (_e, opts) => {
+  try {
+    scanStopFlag = false;
+    const { accessToken } = await getValidToken();
+    const names = (opts.names && opts.names.length) ? opts.names : generateNames(opts);
+    if (!names.length) return { ok: false, error: 'Rien à scanner.' };
+
+    const send = (ch, d) => { if (win && !win.isDestroyed()) win.webContents.send(ch, d); };
+    send('scan-status', { state: 'start', total: names.length, etaMs: estimateScanMs(names.length) });
+
+    let lastStat = 0;
+    const summary = await bulkCheck(names, {
+      token: accessToken,
+      // Ne pousse que les LIBRES au renderer (les « pris » sont des milliers) ;
+      // la progression passe par scan-stats (throttlé).
+      onResult: (r) => { if (r.state === 'free') send('scan-result', r); },
+      onStats: (s) => { const now = Date.now(); if (now - lastStat >= 250) { lastStat = now; send('scan-stats', s); } },
+      shouldStop: () => scanStopFlag,
+    });
+    const ranked = rankNames(summary.freeList);
+    return { ok: true, summary, ranked };
+  } catch (e) { return { ok: false, error: e.message }; }
+});

@@ -32,3 +32,31 @@ export async function closeDispatchers(dispatchers) {
 export function parseProxyList(text) {
   return String(text).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
 }
+
+// Pool de proxies à ROTATION + SANTÉ (pour le scan en masse). Éjecte un proxy
+// après quelques échecs consécutifs pour ne pas ralentir toute la rotation.
+export function makeProxyPool(lines, { ejectAfter = 3 } = {}) {
+  const entries = makeProxyDispatchers(lines).map((agent) => ({ agent, fails: 0, dead: false }));
+  let i = 0;
+  return {
+    size: entries.length,
+    next() {
+      // Round-robin sur les proxies vivants.
+      for (let n = 0; n < entries.length; n++) {
+        const e = entries[i++ % entries.length];
+        if (!e.dead) return e.agent;
+      }
+      return null; // tous morts
+    },
+    reward(agent) {
+      const e = entries.find((x) => x.agent === agent);
+      if (e) e.fails = 0;
+    },
+    penalize(agent) {
+      const e = entries.find((x) => x.agent === agent);
+      if (e && ++e.fails >= ejectAfter) e.dead = true;
+    },
+    aliveCount() { return entries.filter((e) => !e.dead).length; },
+    async close() { await closeDispatchers(entries.map((e) => e.agent)); },
+  };
+}

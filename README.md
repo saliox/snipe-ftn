@@ -118,6 +118,34 @@ carte « Comptes Epic » et coche **Tous les comptes** avant de lancer.
 > (plus de pression sur le rate-limit). Pour du multi-comptes, le mode planifié
 > `--at` est préférable : tous les comptes tirent pile au drop.
 
+### Trouver des noms libres (scan + générateur)
+
+Sur Epic, l'essentiel de l'acquisition de pseudos, c'est de la **découverte de
+noms déjà libres** (pas d'attente d'un drop précis). Le générateur crée des
+candidats, le scanner vérifie en masse lesquels sont libres, et les classe par
+**désirabilité** (S/A/B/C/D : court, sans chiffre, mot du dico ou prononçable).
+
+```bash
+# Générer un aperçu (sans réseau)
+node src/index.js gen --mode dict --length 4 --count 30 --rank
+
+# Scanner 500 combinaisons de 3 lettres, ne garder que les libres au score ≥ 60
+node src/index.js scan --length 3 --charset alpha --count 500 --og --min-score 60
+
+# Scanner une liste perso, via proxies, et sauver les libres
+node src/index.js scan --file mes-noms.txt --proxies proxies.txt --out libres.txt
+```
+
+Modes : `random`, `pronounceable` (consonne/voyelle), `dict` (mots courts),
+`pattern` (`?`=lettre, `#`=chiffre, `*`=alphanum). Le scan est **adaptatif**
+(AIMD : accélère quand l'API suit, ralentit sur 429) et exploite les **proxies**
+pour aller plus vite sans se faire rate-limiter. Dans le GUI : carte
+**« Scanner de noms libres »**, clique un résultat pour le mettre en cible.
+
+> ⚠️ Le lookup Epic est **authentifié** : le scan lit la dispo avec ton token
+> (il ne réclame rien). Les proxies ne portent que la lecture, jamais ton token
+> de manière risquée — le tir de changement part toujours de ton IP.
+
 ### Options de snipe
 
 | Option | Défaut | Rôle |
@@ -212,7 +240,10 @@ l'auto-update fonctionne sans token. Overrides via `.env` : `UPDATE_REPO`.
 | `src/accounts.js` | gestionnaire multi-comptes (store chiffré, refresh, actif) |
 | `src/epicapi.js` | dispo du display name, vérif, changement, validation |
 | `src/sniper.js` | moteur burst + monitor + timing NTP + métriques |
-| `src/proxy.js` | pool de proxies pour la détection (polling) |
+| `src/proxy.js` | proxies : dispatchers (détection) + pool santé (scan) |
+| `src/generate.js` | générateur de pseudos candidats (+ dictionnaire) |
+| `src/bulk.js` | scan de dispo en masse (adaptatif AIMD + proxies) |
+| `src/score.js` | score de désirabilité (classe les libres) |
 | `src/ntp.js` | client SNTP (mesure de dérive d'horloge) |
 | `src/securebox.js` | chiffrement du token au repos |
 | `src/update.js` | auto-update CLI (check + download + remplacement) |
