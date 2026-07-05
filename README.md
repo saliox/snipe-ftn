@@ -40,7 +40,7 @@ Fortnite/Epic ne marche pas comme Mojang. Trois points à connaître :
 ## Installation
 
 ```bash
-cd "C:\Users\teamf\snipe ftn"
+cd snipe-ftn
 npm install
 cp .env.example .env   # puis édite si besoin (identifiants par défaut fournis)
 ```
