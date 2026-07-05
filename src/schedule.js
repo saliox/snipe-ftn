@@ -71,19 +71,27 @@ function flagsFromOpts(o) {
 }
 
 // Écrit un .cmd qui lance le snipe (chemins absolus) + journalise le résultat.
+// Fonctionne aussi bien lancé depuis le CLI (node) que depuis l'app packagée
+// (le binaire Electron), grâce à ELECTRON_RUN_AS_NODE + SNIPE_DATA_DIR figés.
 function writeCmd(item) {
   fs.mkdirSync(schedDir(), { recursive: true });
   const cmdPath = path.join(schedDir(), `${item.id}.cmd`);
   const logPath = path.join(schedDir(), `${item.id}.log`);
-  const node = process.execPath;
+  const exe = process.execPath; // node.exe (CLI) OU l'exe Electron (GUI/packagé)
   const script = path.join(ROOT, 'src', 'index.js');
   const iso = new Date(item.dropAt).toISOString();
   const args = ['snipe', item.name, '--at', iso, ...flagsFromOpts(item.opts)]
     .map((s) => `"${String(s).replace(/"/g, '')}"`).join(' ');
   const body =
     '@echo off\r\n' +
+    // Si l'exe est le binaire Electron (app packagée/GUI), le faire tourner comme
+    // node pur pour exécuter le script CLI. Variable ignorée par un vrai node.exe.
+    'set ELECTRON_RUN_AS_NODE=1\r\n' +
+    // Fige le dossier de données COURANT (GUI = userData) pour que le snipe
+    // planifié retrouve le token, quelle que soit l'origine de la tâche.
+    `set "SNIPE_DATA_DIR=${dataDir()}"\r\n` +
     `cd /d "${ROOT}"\r\n` +
-    `"${node}" "${script}" ${args} >> "${logPath}" 2>&1\r\n`;
+    `"${exe}" "${script}" ${args} >> "${logPath}" 2>&1\r\n`;
   fs.writeFileSync(cmdPath, body);
   return cmdPath;
 }
