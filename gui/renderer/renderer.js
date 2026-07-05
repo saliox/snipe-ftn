@@ -42,6 +42,20 @@ function renderAccount(account) {
 async function refreshWhoami() {
   const r = await api.whoami();
   renderAccount(r.ok ? r.account : null);
+  if (r.ok && r.account && r.account.accountId) refreshEligibility();
+}
+
+// Affiche l'éligibilité au changement de pseudo (cooldown 2 semaines).
+async function refreshEligibility() {
+  const el = await api.eligibility();
+  const box = $('eligibility');
+  if (!el.ok) { box.textContent = ''; return; }
+  if (el.canUpdate) {
+    box.innerHTML = `<span class="badge free">Éligible ✓</span> <span class="muted">changement de pseudo possible maintenant</span>`;
+  } else {
+    const when = el.availableAt ? new Date(el.availableAt).toLocaleString('fr-FR') : 'plus tard';
+    box.innerHTML = `<span class="badge taken">Cooldown</span> <span class="muted">prochain changement possible ${escapeHtml(when)}</span>`;
+  }
 }
 
 $('btn-login-url').onclick = async () => {
@@ -59,6 +73,7 @@ $('btn-login').onclick = async () => {
   if (r.ok) {
     $('login-code').value = '';
     renderAccount(r.account);
+    refreshEligibility();
     pushLog({ level: 'ok', msg: `Connecté : ${r.account?.displayName || r.account?.accountId}` });
   } else {
     pushLog({ level: 'err', msg: `Login échoué : ${r.error}` });

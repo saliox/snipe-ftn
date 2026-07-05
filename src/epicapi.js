@@ -52,16 +52,17 @@ export async function accountFromToken(accessToken) {
 
 // --- Changement de display name ---
 //
-// ⚠️ ENDPOINT À VÉRIFIER EN DIRECT.
-// Epic ne documente pas publiquement d'endpoint de changement de pseudo par
-// token de jeu. Sur le site (epicgames.com/account/personal), le changement
-// passe par un appel authentifié par cookie de session, avec cooldown de 2
-// semaines. L'appel ci-dessous est la meilleure hypothèse (PUT sur le compte).
-// Si Epic renvoie 401/403/404 systématiquement, capture la vraie requête dans
-// l'onglet Réseau du navigateur pendant un changement manuel et reporte
-// l'URL + le corps ici — le reste du moteur (timing, burst, monitor) est bon.
+// ENDPOINT CONFIRMÉ (FortniteEndpointsDocumentation → AccountService/Account/
+// UpdateAccount) :
+//   PUT /account/api/public/account/{accountId}   body { "displayName": "..." }
+//   Scope requis : `account:public:account UPDATE`. Le displayName NE demande PAS
+//   la permission "sensitive" (réservée à email/username/password).
+//   Réponse 200 : { accountInfo: { displayName, canUpdateDisplayName,
+//   lastDisplayNameChange, numberOfDisplayNameChanges, ... } }.
+// Le seul aléa restant : que le token du client de JEU par défaut porte bien ce
+// scope pour TON compte (vrai en pratique) — confirmé au 1er changement réel.
 //
-// Renvoie { ok, status, retryAfter, reason }.
+// Renvoie { ok, status, retryAfter, reason, errorCode }.
 export async function changeDisplayName(name, accessToken, accountId) {
   const { statusCode, headers, body } = await request(
     `${HOST}/account/api/public/account/${encodeURIComponent(accountId)}`,
@@ -76,21 +77,61 @@ export async function changeDisplayName(name, accessToken, accountId) {
   let payload = null;
   try { payload = await body.json(); } catch { await body.dump(); }
 
-  if (statusCode === 200 || statusCode === 204) return { ok: true, status: statusCode, name };
+  if (statusCode === 200 || statusCode === 204) {
+    const applied = payload?.accountInfo?.displayName || name;
+    return { ok: true, status: statusCode, name: applied };
+  }
 
   const retryAfter = headers['retry-after'] ? Number(headers['retry-after']) : null;
-  const errCode = payload?.errorCode || '';
-  const reasons = {
-    400: payload?.errorMessage || 'Requête invalide (nom refusé ou format).',
-    401: 'Token invalide/expiré (401).',
-    403: /cooldown|frequency|rate/i.test(errCode + (payload?.errorMessage || ''))
-      ? 'Cooldown de changement de pseudo actif (2 semaines).'
-      : 'Refusé (403) — nom pris/réservé, ou endpoint non autorisé par token de jeu.',
-    404: 'Endpoint introuvable (404) — voir la note dans epicapi.js pour capturer le vrai endpoint.',
-    409: 'Conflit (409) — nom déjà pris entre-temps.',
-    429: `Rate limit (429)${retryAfter ? `, retry-after ${retryAfter}s` : ''}.`,
+  const errCode = String(payload?.errorCode || '');
+  const errMsg = payload?.errorMessage || '';
+  const blob = `${errCode} ${errMsg}`.toLowerCase();
+
+  // Mapping basé sur les vrais codes d'erreur Epic (substrings, robuste aux variantes).
+  let reason;
+  if (/throttl|change_limit|too_many|frequency|cooldown/.test(blob)) {
+    reason = 'Cooldown de changement de pseudo actif (2 semaines).';
+  } else if (/taken|duplicate|unavailable|already/.test(blob)) {
+    reason = 'Nom déjà pris entre-temps.';
+  } else if (/validation|invalid|forbidden_name|blacklist|profane/.test(blob)) {
+    reason = `Nom refusé (format/mot filtré) : ${errMsg || errCode}`;
+  } else {
+    const generic = {
+      401: 'Token invalide/expiré (401).',
+      403: 'Refusé (403) — scope account:public:account UPDATE manquant sur ce token.',
+      404: 'Compte introuvable (404).',
+      429: `Rate limit (429)${retryAfter ? `, retry-after ${retryAfter}s` : ''}.`,
+    };
+    reason = generic[statusCode] || errMsg || `HTTP ${statusCode}`;
+  }
+  return { ok: false, status: statusCode, retryAfter, reason, errorCode: errCode };
+}
+
+// Éligibilité au changement de pseudo (cooldown 2 semaines). Lit TON compte :
+// GET /account/api/public/account/{accountId} (avec ton token) renvoie les champs
+// étendus canUpdateDisplayName / lastDisplayNameChange / numberOfDisplayNameChanges.
+// Renvoie { canUpdate, lastChange, availableAt, changes, displayName }.
+export async function nameChangeEligibility(accessToken, accountId) {
+  const { statusCode, body } = await request(
+    `${HOST}/account/api/public/account/${encodeURIComponent(accountId)}`,
+    { headers: { authorization: `Bearer ${accessToken}` }, headersTimeout: 8000, bodyTimeout: 8000 }
+  );
+  if (statusCode !== 200) { await body.dump(); throw new Error(`compte HTTP ${statusCode}`); }
+  const d = await body.json();
+  const lastChange = d.lastDisplayNameChange ? Date.parse(d.lastDisplayNameChange) : null;
+  const COOLDOWN = 14 * 24 * 3600 * 1000;
+  // canUpdateDisplayName fait autorité ; sinon on estime via lastChange + 14j.
+  const canUpdate = d.canUpdateDisplayName !== undefined
+    ? !!d.canUpdateDisplayName
+    : (lastChange ? Date.now() >= lastChange + COOLDOWN : true);
+  const availableAt = (!canUpdate && lastChange) ? lastChange + COOLDOWN : null;
+  return {
+    canUpdate,
+    lastChange,
+    availableAt,
+    changes: d.numberOfDisplayNameChanges ?? null,
+    displayName: d.displayName || null,
   };
-  return { ok: false, status: statusCode, retryAfter, reason: reasons[statusCode] || `HTTP ${statusCode}`, errorCode: errCode };
 }
 
 // Règles de display name Epic : 3 à 16 caractères. Epic autorise lettres,

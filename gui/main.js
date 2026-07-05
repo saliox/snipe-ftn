@@ -24,7 +24,7 @@ loadEnv();
 
 import { bus } from '../src/util.js';
 import { loginInteractive, getValidToken, cachedAccount, authCodeUrl } from '../src/auth.js';
-import { displayNameStatus, validName } from '../src/epicapi.js';
+import { displayNameStatus, validName, nameChangeEligibility } from '../src/epicapi.js';
 import { snipe, requestStop } from '../src/sniper.js';
 import { bestOffset } from '../src/ntp.js';
 import { checkForUpdates, applyUpdate } from '../src/update.js';
@@ -109,6 +109,14 @@ ipcMain.handle('update-apply', async (_e, info) => {
 
 // --- Compte / login Epic ---
 ipcMain.handle('whoami', () => ({ ok: true, account: cachedAccount() }));
+
+// Éligibilité au changement de pseudo (cooldown 2 semaines) du compte actif.
+ipcMain.handle('eligibility', async () => {
+  try {
+    const { accessToken, accountId } = await getValidToken();
+    return { ok: true, ...(await nameChangeEligibility(accessToken, accountId)) };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
 
 // Ouvre la page Epic de récupération du code et renvoie l'URL (affichée en repli).
 ipcMain.handle('login-url', () => {

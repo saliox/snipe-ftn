@@ -22,15 +22,15 @@ Fortnite/Epic ne marche pas comme Mojang. Trois points à connaître :
    → Le mode **`--monitor`** est le mode principal ici. `--at` reste dispo si tu
    connais l'instant par un autre moyen.
 
-3. **Endpoint de changement à confirmer.** La vérif de disponibilité est fiable
-   (lookup public du display name). En revanche, l'endpoint de **changement** de
-   pseudo par token de jeu n'est pas documenté publiquement par Epic — voir la
-   note dans [`src/epicapi.js`](src/epicapi.js) (`changeDisplayName`). Le moteur
-   (timing, burst, monitor, alerte sonore) est prêt ; si l'auto-claim renvoie
-   401/403/404, capture la vraie requête depuis l'onglet **Réseau** du navigateur
-   pendant un changement manuel sur `epicgames.com/account/personal` et reporte
-   l'URL + le corps dans cette fonction. Le monitor t'alerte de toute façon en
-   une fraction de seconde pour réclamer à la main.
+3. **Endpoint de changement confirmé.** L'auto-claim utilise l'endpoint
+   documenté `PUT /account/api/public/account/{accountId}` (corps
+   `{"displayName": "..."}`, scope `account:public:account UPDATE`) — cf.
+   [`src/epicapi.js`](src/epicapi.js) (`changeDisplayName`). L'app vérifie aussi
+   ton **éligibilité** (cooldown 2 semaines) avant de tenter, via
+   `canUpdateDisplayName` / `lastDisplayNameChange` du compte. Seule réserve : que
+   le token du client de jeu par défaut porte bien ce scope pour ton compte (vrai
+   en pratique), confirmé au 1er changement réel. En repli, le monitor t'alerte
+   de toute façon pour réclamer à la main.
 
 > **CGU Epic.** L'échange de token s'appuie sur les identifiants d'un client de
 > jeu Epic (comme la quasi-totalité des outils Fortnite tiers). C'est une zone

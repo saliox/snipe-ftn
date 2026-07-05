@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   updateApply: (info) => ipcRenderer.invoke('update-apply', info),
 
   whoami: () => ipcRenderer.invoke('whoami'),
+  eligibility: () => ipcRenderer.invoke('eligibility'),
   loginUrl: () => ipcRenderer.invoke('login-url'),
   login: (code) => ipcRenderer.invoke('login', code),
 

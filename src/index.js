@@ -4,7 +4,7 @@ import 'dotenv/config';
 import readline from 'node:readline';
 import { log, c } from './util.js';
 import { loginInteractive, getValidToken, cachedAccount } from './auth.js';
-import { displayNameStatus, validName } from './epicapi.js';
+import { displayNameStatus, validName, nameChangeEligibility } from './epicapi.js';
 import { snipe } from './sniper.js';
 import { bestOffset } from './ntp.js';
 import { runUpdate, maybeNotify } from './update.js';
@@ -91,6 +91,14 @@ async function main() {
         const a = cachedAccount();
         if (!a) { log.warn('Aucun compte en cache. Lance : node src/index.js login'); break; }
         log.ok(`${c.green}${a.displayName || '(nom inconnu)'}${c.reset} (${a.accountId})`);
+        try {
+          const { accessToken, accountId } = await getValidToken();
+          const el = await nameChangeEligibility(accessToken, accountId);
+          if (el.canUpdate) log.info(`Changement de pseudo : ${c.green}éligible ✓${c.reset}` +
+            (el.changes != null ? ` (${el.changes} changement(s) au total)` : ''));
+          else log.info(`Changement de pseudo : ${c.yellow}cooldown${c.reset}` +
+            (el.availableAt ? ` jusqu'au ${new Date(el.availableAt).toLocaleString('fr-FR')}` : ''));
+        } catch { /* hors-ligne ou token absent : on n'affiche que le cache */ }
         break;
       }
 
@@ -130,6 +138,14 @@ async function main() {
 
         const { accessToken, accountId, displayName } = await getValidToken();
         log.info(`Compte : ${c.green}${displayName || accountId}${c.reset} → cible ${c.yellow}${name}${c.reset}`);
+
+        // Pré-vérif d'éligibilité : évite de gâcher l'unique tentative si en cooldown.
+        try {
+          const el = await nameChangeEligibility(accessToken, accountId);
+          if (el.canUpdate) log.ok('Éligible au changement de pseudo ✓');
+          else log.warn(`⚠ Cooldown actif${el.availableAt ? ` jusqu'au ${new Date(el.availableAt).toLocaleString('fr-FR')}` : ''} — ` +
+            'le changement échouera tant qu\'il court (la surveillance, elle, continue).');
+        } catch (e) { log.info(`(Éligibilité non vérifiable : ${e.message})`); }
 
         let dropAt;
         if (f.at) {
