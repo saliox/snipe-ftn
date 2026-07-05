@@ -130,6 +130,27 @@ async function doCheck() {
   if (!r.valid) box.innerHTML += ' <span class="muted">(format inhabituel)</span>';
 }
 
+// --- Réclamer maintenant ---
+$('claim-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-claim').click(); });
+$('btn-claim').onclick = async () => {
+  const name = $('claim-name').value.trim();
+  if (!name) { pushLog({ level: 'warn', msg: 'Indique le nom à réclamer.' }); return; }
+  if (!window.confirm(`Changer ton pseudo Epic pour « ${name} » MAINTENANT ?\n\n⚠ Epic n'autorise qu'un changement toutes les 2 semaines.`)) return;
+  setBusy($('btn-claim'), true);
+  pushLog({ level: 'step', msg: `Réclamation de « ${name} »…` });
+  const r = await api.claim(name);
+  setBusy($('btn-claim'), false);
+  if (r.ok) {
+    pushLog({ level: 'ok', msg: `🎯 Pseudo changé en ${r.name} !` });
+    $('claim-name').value = '';
+    refreshWhoami();
+  } else if (r.cooldown) {
+    pushLog({ level: 'err', msg: `Cooldown actif${r.availableAt ? ` jusqu'au ${new Date(r.availableAt).toLocaleString('fr-FR')}` : ''}.` });
+  } else {
+    pushLog({ level: 'err', msg: `Échec : ${r.error || r.reason}` });
+  }
+};
+
 // --- NTP ---
 $('btn-ntp').onclick = async () => {
   const box = $('ntp-result');
@@ -268,7 +289,11 @@ function addFreeItem(name, score, tier) {
   el.className = `chip ${tierClass(tier)}`;
   el.title = `score ${score} — clique pour cibler ce nom`;
   el.textContent = name;
-  el.onclick = () => { $('snipe-name').value = name; $('snipe-name').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  el.onclick = () => {
+    $('claim-name').value = name; $('snipe-name').value = name;
+    $('claim-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    $('claim-name').focus();
+  };
   $('scan-results').appendChild(el);
 }
 

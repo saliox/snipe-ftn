@@ -28,7 +28,7 @@ import {
   loginInteractive, getValidToken, cachedAccount,
   listAccounts, removeAccount, setActive, allFreshTokens,
 } from '../src/accounts.js';
-import { displayNameStatus, validName, nameChangeEligibility } from '../src/epicapi.js';
+import { displayNameStatus, validName, nameChangeEligibility, changeDisplayName } from '../src/epicapi.js';
 import { generateNames, spaceSize } from '../src/generate.js';
 import { rankNames } from '../src/score.js';
 import { bulkCheck, estimateScanMs } from '../src/bulk.js';
@@ -157,6 +157,21 @@ ipcMain.handle('check', async (_e, name) => {
     if (out.status.free === true) history.record(name, 'free');
     else if (out.status.free === false) history.record(name, 'taken');
     return out;
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+
+// --- Réclamer un nom MAINTENANT (change le pseudo tout de suite) ---
+ipcMain.handle('claim', async (_e, name) => {
+  try {
+    if (!validName(name)) return { ok: false, error: 'Pseudo invalide (Epic : 3-16 caractères).' };
+    const { accessToken, accountId } = await getValidToken();
+    try {
+      const el = await nameChangeEligibility(accessToken, accountId);
+      if (!el.canUpdate) return { ok: false, cooldown: true, availableAt: el.availableAt, error: 'Cooldown de changement actif (2 semaines).' };
+    } catch { /* éligibilité indéterminée : on tente */ }
+    const r = await changeDisplayName(name, accessToken, accountId);
+    if (r.ok) history.record(name, 'taken');
+    return { ok: r.ok, name: r.name, reason: r.reason };
   } catch (e) { return { ok: false, error: e.message }; }
 });
 

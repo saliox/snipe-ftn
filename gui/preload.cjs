@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   accountActivate: (id) => ipcRenderer.invoke('account-activate', id),
 
   check: (name) => ipcRenderer.invoke('check', name),
+  claim: (name) => ipcRenderer.invoke('claim', name),
   ntp: () => ipcRenderer.invoke('ntp'),
 
   snipe: (opts) => ipcRenderer.invoke('snipe', opts),

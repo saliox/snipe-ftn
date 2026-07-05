@@ -12,7 +12,7 @@ import {
   loginInteractive, getValidToken, cachedAccount,
   listAccounts, removeAccount, setActive, allFreshTokens,
 } from './accounts.js';
-import { displayNameStatus, validName, nameChangeEligibility } from './epicapi.js';
+import { displayNameStatus, validName, nameChangeEligibility, changeDisplayName } from './epicapi.js';
 import { snipe, watchNames } from './sniper.js';
 import { setWebhookUrl, testAlert, alertsConfigured } from './alerts.js';
 import { listSchedules, addSchedule, removeSchedule, pruneSchedules } from './schedule.js';
@@ -53,6 +53,7 @@ ${c.yellow}Commandes :${c.reset}
   whoami                        Afficher le compte connecté
   accounts [list|add|use <id>|remove <id>]   Gérer les comptes (multi-comptes)
   check <pseudo>                Vérifier la disponibilité d'un display name
+  claim <pseudo>                Changer ton pseudo pour celui-ci MAINTENANT
   gen [options]                 Générer des pseudos candidats (sans réseau)
   scan [options]                Générer + scanner en masse les noms LIBRES
   time                          Mesurer le décalage d'horloge NTP
@@ -206,6 +207,25 @@ async function main() {
         } catch (e) {
           log.err(`Vérif impossible : ${e.message}`);
         }
+        break;
+      }
+
+      case 'claim': {
+        const name = argv[1];
+        if (!name) { log.err('Usage : claim <pseudo>  (change ton pseudo TOUT DE SUITE)'); break; }
+        if (!validName(name)) { log.err('Pseudo invalide (Epic : 3-16 caractères).'); break; }
+        const { accessToken, accountId, displayName } = await getValidToken();
+        try {
+          const el = await nameChangeEligibility(accessToken, accountId);
+          if (!el.canUpdate) {
+            log.err(`Cooldown actif${el.availableAt ? ` jusqu'au ${new Date(el.availableAt).toLocaleString('fr-FR')}` : ''} — changement impossible maintenant.`);
+            break;
+          }
+        } catch { /* éligibilité indéterminée : on tente quand même */ }
+        log.step(`Réclamation de ${c.yellow}${name}${c.reset} (compte ${c.green}${displayName || accountId}${c.reset})`);
+        const r = await changeDisplayName(name, accessToken, accountId);
+        if (r.ok) { log.ok(`${c.green}🎯 Pseudo changé en ${r.name} !${c.reset}`); history.record(name, 'taken'); }
+        else log.err(`Échec : ${r.reason}`);
         break;
       }
 

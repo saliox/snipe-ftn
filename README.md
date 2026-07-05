@@ -81,6 +81,9 @@ automatique tant qu'il est valide.
 # Vérifier si un pseudo est libre
 node src/index.js check MonPseudo
 
+# Réclamer un nom LIBRE tout de suite (change ton pseudo maintenant)
+node src/index.js claim MonPseudo
+
 # Mesurer la dérive d'horloge (NTP)
 node src/index.js time
 
