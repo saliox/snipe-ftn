@@ -166,6 +166,36 @@ node src/index.js watch --file cibles.txt
 Le webhook peut aussi venir de `.env` (`DISCORD_WEBHOOK_URL`). Dans le GUI :
 carte **« Watchlist & alertes »** (liste + champ webhook + Tester).
 
+### Snipes planifiés (survivent au redémarrage)
+
+Un snipe programmé dans plusieurs jours ne doit pas dépendre du fait que le PC
+reste allumé et l'outil ouvert. `schedule` persiste la file **et** crée une
+**Tâche Windows** (sans droits admin) qui relance l'outil ~2 min avant le drop.
+Grâce à « démarrer dès que possible si manqué », une tâche ratée (PC éteint à
+l'heure) se lance dès le retour de la machine.
+
+```bash
+node src/index.js schedule add MonPseudo --at 2026-07-10T15:00:00Z --burst 8
+node src/index.js schedule                 # lister
+node src/index.js schedule remove <id>     # retirer (supprime aussi la tâche)
+node src/index.js schedule prune           # nettoyer les drops passés
+```
+
+Dans le GUI : en mode **Planifié**, coche **« Survit au redémarrage »** avant de
+lancer ; les planifiés s'affichent sous la carte snipe.
+
+### Historique des noms vus
+
+Chaque `check`/`scan` enregistre l'état (libre/pris) des noms. Pratique pour
+retrouver les libres passés et repérer ceux qui « tournent ».
+
+```bash
+node src/index.js history            # stats
+node src/index.js history --free     # lister les noms vus libres
+node src/index.js history --search og
+node src/index.js history clear
+```
+
 ### Options de snipe
 
 | Option | Défaut | Rôle |
@@ -265,6 +295,8 @@ l'auto-update fonctionne sans token. Overrides via `.env` : `UPDATE_REPO`.
 | `src/bulk.js` | scan de dispo en masse (adaptatif AIMD + proxies) |
 | `src/score.js` | score de désirabilité (classe les libres) |
 | `src/alerts.js` | alertes Discord (webhook chiffré) + hook notif native |
+| `src/schedule.js` | snipes planifiés persistés + Tâche Windows (reboot-safe) |
+| `src/history.js` | historique des noms vus (libre/pris) |
 | `src/ntp.js` | client SNTP (mesure de dérive d'horloge) |
 | `src/securebox.js` | chiffrement du token au repos |
 | `src/update.js` | auto-update CLI (check + download + remplacement) |

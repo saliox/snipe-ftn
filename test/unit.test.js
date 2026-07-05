@@ -13,6 +13,8 @@ import { saveEncrypted, loadEncrypted } from '../src/securebox.js';
 import { generateNames, spaceSize, isDictWord } from '../src/generate.js';
 import { scoreName, rankNames } from '../src/score.js';
 import { setWebhookUrl, getWebhookUrl, alertsConfigured } from '../src/alerts.js';
+import * as history from '../src/history.js';
+import { addSchedule, listSchedules, removeSchedule } from '../src/schedule.js';
 
 test('isNewer : compare des versions sémantiques', () => {
   assert.equal(isNewer('1.0.1', '1.0.0'), true);
@@ -97,6 +99,35 @@ test('alerts : validation URL + round-trip webhook chiffré', () => {
   setWebhookUrl('');
   assert.equal(getWebhookUrl(), null);
   assert.equal(alertsConfigured(), false);
+});
+
+test('history : record / lookup / stats / free', () => {
+  process.env.SNIPE_DATA_DIR = path.join(os.tmpdir(), `hist-${crypto.randomUUID()}`);
+  history.clear();
+  history.record('coolname', 'free');
+  history.record('takenone', 'taken');
+  history.record('coolname', 'free');
+  history.record('ignored', 'error'); // état non suivi
+  assert.equal(history.lookup('coolname').state, 'free');
+  assert.equal(history.lookup('nope'), null);
+  const s = history.stats();
+  assert.equal(s.total, 2);
+  assert.equal(s.free, 1);
+  assert.deepEqual(history.allFree(), ['coolname']);
+  assert.deepEqual(history.searchFree('cool'), ['coolname']);
+  history.clear();
+  assert.equal(history.stats().total, 0);
+});
+
+test('schedule : add / list / remove (sans tâche Windows)', () => {
+  process.env.SNIPE_DATA_DIR = path.join(os.tmpdir(), `sched-${crypto.randomUUID()}`);
+  const item = addSchedule({ name: 'TestName', dropAt: Date.now() + 3600_000, opts: { burst: 8 } }, { register: false });
+  assert.ok(item.id && item.taskName.includes(item.id));
+  const list = listSchedules();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].name, 'TestName');
+  removeSchedule(item.id);
+  assert.equal(listSchedules().length, 0);
 });
 
 test('makeProxyPool : rotation + éjection après échecs', () => {

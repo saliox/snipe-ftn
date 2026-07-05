@@ -176,6 +176,18 @@ $('btn-snipe').onclick = async () => {
     const ts = new Date(v).getTime(); // datetime-local = heure locale
     if (Number.isNaN(ts)) { pushLog({ level: 'err', msg: 'Date invalide.' }); return; }
     opts.dropAt = ts;
+
+    // Planification persistante (tâche Windows) plutôt qu'un snipe bloquant.
+    if ($('p-reboot').checked) {
+      const r = await api.scheduleAdd({ name, dropAt: ts, opts: {
+        burst: opts.burst, volley: opts.volley, spacing: opts.spacingMs,
+        poll: opts.pollMs, connections: opts.connections,
+        allAccounts: opts.allAccounts, diag: opts.diag, skipNtp: opts.skipNtp,
+      } });
+      if (r.ok) { pushLog({ level: 'ok', msg: `Planifié : « ${name} » le ${new Date(ts).toLocaleString('fr-FR')} — survivra au redémarrage.` }); renderSchedules(r.items); }
+      else pushLog({ level: 'err', msg: `Planification : ${r.error}` });
+      return;
+    }
   }
 
   running(true);
@@ -299,6 +311,31 @@ function scanRunning(on) {
   $('btn-scan').textContent = on ? 'Scan en cours…' : 'Scanner les libres';
 }
 
+// --- Snipes planifiés (survivent au reboot) ---
+function renderSchedules(items) {
+  const box = $('schedules');
+  if (!items || !items.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '';
+  for (const it of [...items].sort((a, b) => a.dropAt - b.dropAt)) {
+    const row = document.createElement('div');
+    row.className = 'acct';
+    const left = it.dropAt - Date.now();
+    const name = document.createElement('span');
+    name.className = 'acct-name';
+    name.textContent = it.name;
+    const when = document.createElement('span');
+    when.className = 'muted';
+    when.style.fontSize = '12px';
+    when.textContent = new Date(it.dropAt).toLocaleString('fr-FR') + (left > 0 ? '' : ' (passé)');
+    const del = document.createElement('button');
+    del.className = 'btn ghost sm'; del.textContent = '✕'; del.title = 'Retirer';
+    del.onclick = async () => { const r = await api.scheduleRemove(it.id); if (r.ok) renderSchedules(r.items); };
+    row.append(name, when, del);
+    box.appendChild(row);
+  }
+}
+async function refreshSchedules() { const r = await api.scheduleList(); if (r.ok) renderSchedules(r.items); }
+
 // --- Watchlist ---
 function watchListNames() {
   return $('watch-names').value.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
@@ -354,6 +391,7 @@ $('btn-alert-test').onclick = async () => {
   try { const v = await api.appVersion(); $('version').textContent = 'v' + v; } catch {}
   refreshWhoami();
   refreshAlertStatus();
+  refreshSchedules();
 })();
 
 })();

@@ -33,6 +33,8 @@ import { generateNames, spaceSize } from '../src/generate.js';
 import { rankNames } from '../src/score.js';
 import { bulkCheck, estimateScanMs } from '../src/bulk.js';
 import { setWebhookUrl, testAlert, alertsConfigured } from '../src/alerts.js';
+import { listSchedules, addSchedule, removeSchedule } from '../src/schedule.js';
+import * as history from '../src/history.js';
 import { snipe, watchNames, requestStop } from '../src/sniper.js';
 import { bestOffset } from '../src/ntp.js';
 import { checkForUpdates, applyUpdate } from '../src/update.js';
@@ -152,6 +154,8 @@ ipcMain.handle('check', async (_e, name) => {
     const out = { ok: true, name, valid: validName(name) };
     const { accessToken } = await getValidToken();
     out.status = await displayNameStatus(name, accessToken);
+    if (out.status.free === true) history.record(name, 'free');
+    else if (out.status.free === false) history.record(name, 'taken');
     return out;
   } catch (e) { return { ok: false, error: e.message }; }
 });
@@ -221,6 +225,22 @@ ipcMain.handle('watch-start', async (_e, opts) => {
   } catch (e) { return { ok: false, error: e.message }; }
 });
 
+// --- Snipes planifiés (survivent au reboot) ---
+ipcMain.handle('schedule-list', () => { try { return { ok: true, items: listSchedules() }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle('schedule-add', (_e, { name, dropAt, opts }) => {
+  try {
+    if (!validName(name)) return { ok: false, error: 'Pseudo invalide (3-16 caractères).' };
+    if (!dropAt) return { ok: false, error: 'Instant du drop requis.' };
+    const item = addSchedule({ name, dropAt, opts: opts || {} });
+    return { ok: true, item, items: listSchedules() };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle('schedule-remove', (_e, id) => { try { removeSchedule(id); return { ok: true, items: listSchedules() }; } catch (e) { return { ok: false, error: e.message }; } });
+
+// --- Historique ---
+ipcMain.handle('history-stats', () => { try { return { ok: true, ...history.stats() }; } catch (e) { return { ok: false, error: e.message }; } });
+ipcMain.handle('history-free', () => { try { return { ok: true, names: history.allFree() }; } catch (e) { return { ok: false, error: e.message }; } });
+
 // --- Alertes Discord ---
 ipcMain.handle('alert-status', () => ({ ok: true, configured: alertsConfigured() }));
 ipcMain.handle('alert-set', (_e, url) => { try { setWebhookUrl(url); return { ok: true }; } catch (e) { return { ok: false, error: e.message }; } });
@@ -256,7 +276,7 @@ ipcMain.handle('scan-start', async (_e, opts) => {
       token: accessToken,
       // Ne pousse que les LIBRES au renderer (les « pris » sont des milliers) ;
       // la progression passe par scan-stats (throttlé).
-      onResult: (r) => { if (r.state === 'free') send('scan-result', r); },
+      onResult: (r) => { history.record(r.name, r.state); if (r.state === 'free') send('scan-result', r); },
       onStats: (s) => { const now = Date.now(); if (now - lastStat >= 250) { lastStat = now; send('scan-stats', s); } },
       shouldStop: () => scanStopFlag,
     });

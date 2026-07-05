@@ -7,7 +7,7 @@ import { parseProxyList, makeProxyPool } from './proxy.js';
 import { generateNames, spaceSize } from './generate.js';
 import { scoreName, rankNames } from './score.js';
 import { bulkCheck, estimateScanMs } from './bulk.js';
-import { log, c } from './util.js';
+import { log, c, fmtDuration } from './util.js';
 import {
   loginInteractive, getValidToken, cachedAccount,
   listAccounts, removeAccount, setActive, allFreshTokens,
@@ -15,6 +15,8 @@ import {
 import { displayNameStatus, validName, nameChangeEligibility } from './epicapi.js';
 import { snipe, watchNames } from './sniper.js';
 import { setWebhookUrl, testAlert, alertsConfigured } from './alerts.js';
+import { listSchedules, addSchedule, removeSchedule, pruneSchedules } from './schedule.js';
+import * as history from './history.js';
 import { bestOffset } from './ntp.js';
 import { runUpdate, maybeNotify } from './update.js';
 
@@ -58,6 +60,9 @@ ${c.yellow}Commandes :${c.reset}
   snipe <pseudo> --at <ISO>     Snipe planifié à un instant précis (UTC)
   watch <n1> <n2> … [--file f]  Surveiller PLUSIEURS noms, réclamer le 1er libre
   alert [set <url>|test|clear]  Webhook Discord (alerte quand un nom se libère)
+  schedule add <p> --at <ISO>   Planifier un snipe qui SURVIT au redémarrage
+  schedule [list|remove <id>|prune]   Gérer les snipes planifiés
+  history [--free|--search q|clear]   Historique des noms vus libres/pris
   update [--check]              Mettre à jour l'outil (--check = vérifier seulement)
 
 ${c.yellow}Options de snipe :${c.reset}
@@ -195,8 +200,8 @@ async function main() {
           const { accessToken } = await getValidToken();
           const st = await displayNameStatus(name, accessToken);
           if (st.rateLimited) log.warn('API Epic rate-limitée, réessaie.');
-          else if (st.free) log.ok(`${c.green}LIBRE${c.reset}`);
-          else if (st.free === false) log.info(`${c.yellow}PRIS${c.reset} par ${st.displayName} (${st.accountId})`);
+          else if (st.free) { log.ok(`${c.green}LIBRE${c.reset}`); history.record(name, 'free'); }
+          else if (st.free === false) { log.info(`${c.yellow}PRIS${c.reset} par ${st.displayName} (${st.accountId})`); history.record(name, 'taken'); }
           else log.warn(`Réponse ${st.statusCode}`);
         } catch (e) {
           log.err(`Vérif impossible : ${e.message}`);
@@ -246,7 +251,7 @@ async function main() {
         let lastStat = 0;
         const summary = await bulkCheck(names, {
           token: accessToken, proxyPool: pool, minIntervalMs: minInterval,
-          onResult: (r) => { if (r.state === 'free') log.ok(`${c.green}LIBRE${c.reset} ${r.name}`); },
+          onResult: (r) => { history.record(r.name, r.state); if (r.state === 'free') log.ok(`${c.green}LIBRE${c.reset} ${r.name}`); },
           onStats: (s) => {
             const now = Date.now();
             if (now - lastStat < 1000) return;
@@ -403,6 +408,71 @@ async function main() {
             ? 'Webhook configuré ✓ (alert test pour vérifier, alert clear pour retirer).'
             : 'Aucun webhook. « alert set <url> » pour recevoir une alerte Discord quand un nom se libère.');
         }
+        break;
+      }
+
+      case 'schedule': {
+        const sub = argv[1];
+        if (sub === 'add') {
+          const name = argv[2];
+          const f = flags(argv.slice(3));
+          if (!name || !validName(name)) { log.err('Usage : schedule add <pseudo> --at <ISO> [options]'); break; }
+          let dropAt;
+          if (f.at) { dropAt = Date.parse(f.at); if (Number.isNaN(dropAt)) { log.err(`--at invalide : ${f.at}`); break; } }
+          else if (f.in) { const ms = parseDuration(f.in); if (ms == null) { log.err('--in invalide.'); break; } dropAt = Date.now() + ms; }
+          else { log.err('Précise --at <ISO> ou --in <durée>.'); break; }
+          if (dropAt < Date.now() + 150_000) log.warn('⚠ Drop très proche (< ~2,5 min) : la tâche planifiée a peu de marge. Préfère « snipe --at » directement.');
+
+          const opts = {
+            burst: f.burst ? Number(f.burst) : undefined, volley: f.volley ? Number(f.volley) : undefined,
+            spacing: f.spacing ? Number(f.spacing) : undefined, lead: f.lead ? Number(f.lead) : undefined,
+            poll: f.poll ? Number(f.poll) : undefined, connections: f.connections ? Number(f.connections) : undefined,
+            proxies: f.proxies || undefined, allAccounts: !!f['all-accounts'], diag: !!f.diag, skipNtp: !!f['skip-ntp'],
+          };
+          try {
+            const item = addSchedule({ name, dropAt, opts });
+            if (item.registered) log.ok(`Planifié : ${c.yellow}${name}${c.reset} le ${new Date(dropAt).toLocaleString('fr-FR')} (id ${item.id}) — survivra au redémarrage.`);
+            else log.warn(`Enregistré (id ${item.id}) mais tâche Windows NON créée : ${item.registerError || '?'}`);
+          } catch (e) { log.err(e.message); }
+        } else if (sub === 'remove') {
+          if (!argv[2]) { log.err('Usage : schedule remove <id>'); break; }
+          const it = removeSchedule(argv[2]);
+          log.ok(it ? `Planification ${argv[2]} retirée.` : 'Id introuvable.');
+        } else if (sub === 'prune') {
+          log.ok(`${pruneSchedules()} planification(s) passée(s) nettoyée(s).`);
+        } else if (sub && sub !== 'list') {
+          log.err(`Sous-commande inconnue : ${sub} (list | add | remove <id> | prune)`); break;
+        }
+        const items = listSchedules();
+        if (!items.length) { log.warn('Aucune planification. Ex : schedule add MonPseudo --at 2026-07-10T15:00:00Z'); break; }
+        log.step(`Snipes planifiés (${items.length})`);
+        for (const it of items.sort((a, b) => a.dropAt - b.dropAt)) {
+          const left = it.dropAt - Date.now();
+          const status = left > 0 ? `dans ${fmtDuration(left)}` : 'passé';
+          console.log(`  ${c.gray}${it.id}${c.reset}  ${c.yellow}${it.name}${c.reset}  ${new Date(it.dropAt).toLocaleString('fr-FR')}  ${c.gray}(${status})${c.reset}`);
+        }
+        break;
+      }
+
+      case 'history': {
+        if (argv[1] === 'clear') { history.clear(); log.ok('Historique vidé.'); break; }
+        const f = flags(argv.slice(1));
+        if (f.search) {
+          const names = history.searchFree(f.search);
+          log.step(`Libres vus contenant « ${f.search} » (${names.length})`);
+          for (const n of names.slice(0, 60)) console.log(`  ${n}`);
+          break;
+        }
+        if (f.free) {
+          const names = history.allFree();
+          log.step(`Noms vus LIBRES (${names.length})`);
+          for (const n of names.slice(0, 80)) console.log(`  ${n}`);
+          if (names.length > 80) log.info(`…et ${names.length - 80} autres.`);
+          break;
+        }
+        const s = history.stats();
+        log.ok(`Historique : ${s.total} noms suivis · ${c.green}${s.free} libres${c.reset} · ${s.taken} pris · ${s.everFree} déjà vus libres.`);
+        log.info('history --free · history --search <q> · history clear');
         break;
       }
 

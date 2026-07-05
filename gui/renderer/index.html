@@ -72,6 +72,7 @@
       <div id="scheduled-row" class="row hidden">
         <label class="lbl">Instant du drop (heure locale)</label>
         <input id="snipe-at" class="input" type="datetime-local" step="1" />
+        <label class="chk"><input id="p-reboot" type="checkbox" /> Survit au redémarrage</label>
       </div>
 
       <div class="params">
@@ -91,6 +92,7 @@
         <button id="btn-stop" class="btn danger" disabled>Arrêter</button>
       </div>
       <p class="hint">⚠ Epic : changement de pseudo limité à 1× / 2 semaines. Sois éligible avant de lancer.</p>
+      <div id="schedules" class="accounts"></div>
     </section>
 
     <!-- Watchlist + Alertes -->

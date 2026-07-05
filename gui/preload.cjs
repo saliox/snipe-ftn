@@ -31,6 +31,12 @@ contextBridge.exposeInMainWorld('api', {
   alertClear: () => ipcRenderer.invoke('alert-clear'),
   alertTest: () => ipcRenderer.invoke('alert-test'),
 
+  scheduleList: () => ipcRenderer.invoke('schedule-list'),
+  scheduleAdd: (payload) => ipcRenderer.invoke('schedule-add', payload),
+  scheduleRemove: (id) => ipcRenderer.invoke('schedule-remove', id),
+  historyStats: () => ipcRenderer.invoke('history-stats'),
+  historyFree: () => ipcRenderer.invoke('history-free'),
+
   onLog: (cb) => ipcRenderer.on('log', (_e, data) => cb(data)),
   onScanResult: (cb) => ipcRenderer.on('scan-result', (_e, data) => cb(data)),
   onScanStats: (cb) => ipcRenderer.on('scan-stats', (_e, data) => cb(data)),
