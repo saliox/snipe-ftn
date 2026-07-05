@@ -86,7 +86,6 @@ export async function runUpdate({ check = false } = {}) {
     res = await checkForUpdates();
   } catch (e) {
     log.err(`Vérification impossible : ${e.message}`);
-    log.info('(Dépôt/release absent ? Publie d\'abord avec : npm run publish:update)');
     return;
   }
 

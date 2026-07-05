@@ -35,7 +35,12 @@ export async function fetchLatestGithub(repo) {
     headers: { 'user-agent': UA, accept: 'application/vnd.github+json' },
     maxRedirections: 3, headersTimeout: 6000, bodyTimeout: 10000,
   });
-  if (statusCode !== 200) { await body.dump(); throw new Error(`GitHub API HTTP ${statusCode}`); }
+  if (statusCode !== 200) {
+    await body.dump();
+    if (statusCode === 403) throw new Error('GitHub API 403 (limite de requêtes atteinte — réessaie plus tard).');
+    if (statusCode === 404) throw new Error('Aucune release publiée (dépôt/release absent).');
+    throw new Error(`GitHub API HTTP ${statusCode}`);
+  }
   const rel = await body.json();
   const version = String(rel.tag_name || '').replace(/^v/i, '');
   const assets = (rel.assets || []).map((a) => ({
