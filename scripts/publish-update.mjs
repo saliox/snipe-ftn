@@ -77,10 +77,24 @@ fs.writeFileSync(path.join(releaseDir, 'latest.json'), JSON.stringify(latest, nu
 console.log('Feed local prêt dans release/ :');
 console.log(`  version : ${version}  |  ${(size / 1024).toFixed(0)} Ko  |  sha256 ${sha256.slice(0, 12)}…`);
 
-// Mode LAN : on s'arrête ici (aucune publication publique).
+// Construit l'installeur NSIS (Setup.exe) pour les NOUVEAUX installs. Best-effort :
+// une absence de makensis ne doit pas faire échouer la publication de la MAJ.
+function buildInstaller() {
+  console.log('\nConstruction de l\'installeur (Setup.exe)…');
+  const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'build-installer.mjs')], { stdio: 'inherit' });
+  const exe = path.join(root, 'dist', `Fortnite Sniper Setup ${version}.exe`);
+  if (r.status === 0 && fs.existsSync(exe)) return exe;
+  console.warn('⚠ Installeur non généré (makensis absent ?). Le reste de la publication reste OK.');
+  return null;
+}
+
+// Mode LAN : on s'arrête ici (aucune publication publique), mais on régénère
+// quand même l'installeur local pour les nouveaux installs.
 if (local) {
+  const exe = buildInstaller();
   console.log('\n✓ Feed LAN prêt. Sers-le avec :  npm run serve:updates');
   console.log('  Puis mets l\'UPDATE_URL affichée dans le .env des PC clients.');
+  if (exe) console.log(`  Installeur pour nouveaux PC : ${exe}`);
   process.exit(0);
 }
 
@@ -103,6 +117,16 @@ if (gh.status !== 0) {
   process.exit(1);
 }
 
+// 5. Installeur Setup.exe joint à la release (téléchargement direct pour les
+//    nouveaux installs). Best-effort : n'invalide pas la MAJ si ça échoue.
+const setupExe = buildInstaller();
+if (setupExe) {
+  const up = spawnSync('gh', ['release', 'upload', tag, setupExe, '--clobber'], { stdio: 'inherit' });
+  if (up.status === 0) console.log(`  ✓ Installeur joint à la release (${(fs.statSync(setupExe).size / 1e6).toFixed(0)} Mo).`);
+  else console.warn('  ⚠ Upload de l\'installeur échoué (la MAJ zip reste publiée).');
+}
+
 console.log(`\n✓ Publié : https://github.com/saliox/snipe-ftn/releases/tag/${tag}`);
 console.log('  Les installations récupéreront l\'avis au prochain lancement (check 1×/jour),');
 console.log('  ou immédiatement via : node src/index.js update');
+console.log(`  Nouveaux installs : https://github.com/saliox/snipe-ftn/releases/latest`);
