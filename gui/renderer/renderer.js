@@ -249,6 +249,14 @@ $('update-go').onclick = async () => {
 };
 $('update-cancel').onclick = () => $('update-modal').classList.add('hidden');
 
+// Vérif auto au démarrage (envoyée par le main) : propose l'install, sans forcer.
+api.onUpdateAvailable((r) => {
+  pendingUpdate = r.info;
+  const notes = r.notes ? `<br><span class="muted">${escapeHtml(String(r.notes).split('\n')[0])}</span>` : '';
+  openModal('Mise à jour disponible', `Nouvelle version <b>${escapeHtml(r.version)}</b> (actuelle ${escapeHtml(r.current)}).${notes}`, true);
+  pushLog({ level: 'info', msg: `★ Mise à jour ${r.version} disponible.` });
+});
+
 function openModal(title, body, showGo) {
   $('update-title').textContent = title;
   $('update-body').innerHTML = body;

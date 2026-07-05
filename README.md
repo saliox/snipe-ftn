@@ -236,10 +236,10 @@ node src/index.js history clear
 Même système que snipe-mc, adapté au CLI (l'asset de release est un **zip de
 sources**, pas un installeur `.exe`).
 
-- **Avis discret au démarrage** : à chaque commande (sauf `snipe`, chemin
-  critique), au plus **1×/24 h**, l'outil vérifie s'il existe une version plus
-  récente et affiche un simple avis. Non bloquant (timeout 2,5 s, silencieux si
-  hors-ligne).
+- **Avis discret au démarrage** : au plus **1×/24 h**, l'outil vérifie s'il
+  existe une version plus récente. En **CLI** (sauf `snipe`, chemin critique) il
+  affiche un simple avis ; dans l'**app (GUI)** il ouvre au démarrage une fenêtre
+  proposant l'install (jamais forcée). Non bloquant, silencieux si hors-ligne.
 - **`node src/index.js update`** : télécharge la dernière release, vérifie le
   **SHA-256**, extrait le zip, remplace les fichiers (sans toucher à `data/` ni
   `.env`). Le zip **embarque les deps** (`undici`/`dotenv`), donc la MAJ marche

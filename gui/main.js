@@ -37,7 +37,7 @@ import { listSchedules, addSchedule, removeSchedule } from '../src/schedule.js';
 import * as history from '../src/history.js';
 import { snipe, watchNames, requestStop } from '../src/sniper.js';
 import { bestOffset } from '../src/ntp.js';
-import { checkForUpdates, applyUpdate } from '../src/update.js';
+import { checkForUpdates, applyUpdate, checkThrottled } from '../src/update.js';
 
 let win;
 const ICON = path.join(__dirname, '..', 'build', 'icon.png');
@@ -77,6 +77,17 @@ function createWindow() {
 
   // Les logs du moteur (util.bus) sont relayés en direct au renderer.
   bus.on('log', (e) => { if (win && !win.isDestroyed()) win.webContents.send('log', e); });
+
+  // Auto-update : vérif discrète au démarrage (au plus 1×/24 h). Si une version
+  // est dispo, on PROPOSE l'install au renderer (jamais d'install forcée).
+  win.webContents.once('did-finish-load', () => {
+    setTimeout(async () => {
+      const res = await checkThrottled();
+      if (res && res.available && win && !win.isDestroyed()) {
+        win.webContents.send('update-available', { current: res.current, version: res.version, notes: res.notes, info: res.info });
+      }
+    }, 3000);
+  });
 }
 
 app.whenReady().then(() => {

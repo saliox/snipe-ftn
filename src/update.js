@@ -75,6 +75,26 @@ export async function maybeNotify(maxAgeMs = 24 * 3600 * 1000) {
   return false;
 }
 
+// Vérif throttlée (1×/maxAge) SANS impression console — pour le GUI. Renvoie le
+// résultat de checkForUpdates ({ available, current, version, notes, info }) si
+// une vérif a eu lieu, sinon null (pas due, réseau KO, ou timeout).
+export async function checkThrottled(maxAgeMs = 24 * 3600 * 1000) {
+  try {
+    const f = stampFile();
+    let last = 0;
+    try { last = JSON.parse(fs.readFileSync(f, 'utf8')).t || 0; } catch {}
+    if (Date.now() - last < maxAgeMs) return null;
+    try {
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      fs.writeFileSync(f, JSON.stringify({ t: Date.now() }));
+    } catch {}
+    return await Promise.race([
+      checkForUpdates(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000)),
+    ]);
+  } catch { return null; }
+}
+
 // Vérifie puis, si dispo (ou si force), télécharge et applique la mise à jour.
 export async function runUpdate({ check = false } = {}) {
   log.step('Recherche de mise à jour');

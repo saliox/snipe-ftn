@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('api', {
   historyFree: () => ipcRenderer.invoke('history-free'),
 
   onLog: (cb) => ipcRenderer.on('log', (_e, data) => cb(data)),
+  onUpdateAvailable: (cb) => ipcRenderer.on('update-available', (_e, data) => cb(data)),
   onScanResult: (cb) => ipcRenderer.on('scan-result', (_e, data) => cb(data)),
   onScanStats: (cb) => ipcRenderer.on('scan-stats', (_e, data) => cb(data)),
   onScanStatus: (cb) => ipcRenderer.on('scan-status', (_e, data) => cb(data)),
