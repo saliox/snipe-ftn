@@ -2,6 +2,8 @@
 // CLI du sniper de pseudos Fortnite / Epic Games.
 import 'dotenv/config';
 import readline from 'node:readline';
+import { readFileSync } from 'node:fs';
+import { parseProxyList } from './proxy.js';
 import { log, c } from './util.js';
 import {
   loginInteractive, getValidToken, cachedAccount,
@@ -54,12 +56,15 @@ ${c.yellow}Options de snipe :${c.reset}
   --monitor         mode surveillance (poll jusqu'à libre) — mode principal Epic
   --at <ISO>        instant du drop, ex. 2026-07-10T15:00:00Z
   --in <durée>      alternative à --at, ex. 90s, 15m, 2h
-  --burst <n>       nb de requêtes dans la rafale (def 6)
-  --spacing <ms>    espacement entre requêtes (def 30)
+  --burst <n>       nb total de requêtes dans la rafale (def 6)
+  --volley <n>      requêtes lâchées SIMULTANÉMENT à T0 (def 3)
+  --spacing <ms>    espacement des relances après la volée (def 30)
   --lead <ms>       avance de la 1re requête sur le drop (def 40)
-  --poll <ms>       intervalle de sondage en monitor (def 1000)
+  --poll <ms>       intervalle de sondage en monitor (def 1000, adaptatif si --at)
   --connections <n> connexions pré-chauffées (def 3)
+  --proxies <file>  fichier .txt de proxies (host:port) pour la détection
   --all-accounts    tirer depuis TOUS les comptes enregistrés en parallèle
+  --diag            journal détaillé + résumé de métriques (RTT, 429…)
   --skip-ntp        ne pas synchroniser l'horloge
 
 ${c.yellow}Exemples :${c.reset}
@@ -180,14 +185,25 @@ async function main() {
           break;
         }
 
+        let proxyList = null;
+        if (f.proxies) {
+          try {
+            proxyList = parseProxyList(readFileSync(f.proxies, 'utf8'));
+            log.info(`${proxyList.length} proxy(s) chargé(s) pour la détection.`);
+          } catch (e) { log.err(`Fichier proxies illisible : ${e.message}`); break; }
+        }
+
         const common = {
           name, dropAt,
           monitor: !!f.monitor,
           burst: f.burst ? Number(f.burst) : undefined,
+          volley: f.volley ? Number(f.volley) : undefined,
           spacingMs: f.spacing ? Number(f.spacing) : undefined,
           leadMs: f.lead ? Number(f.lead) : undefined,
           pollMs: f.poll ? Number(f.poll) : undefined,
           connections: f.connections ? Number(f.connections) : undefined,
+          proxies: proxyList,
+          diag: !!f.diag,
           skipNtp: !!f['skip-ntp'],
         };
 

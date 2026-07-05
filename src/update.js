@@ -132,11 +132,17 @@ export async function applyUpdate(info) {
   log.info('Remplacement des fichiers...');
   fs.cpSync(srcRoot, ROOT, { recursive: true, force: true });
 
-  log.info('Réinstallation des dépendances (npm install)...');
-  // shell:true est requis sous Windows : depuis un correctif de sécurité Node,
-  // spawn refuse de lancer un .cmd (npm.cmd) sans passer par le shell.
-  const ni = spawnSync('npm install --no-audit --no-fund', { cwd: ROOT, stdio: 'inherit', shell: true });
-  if (ni.status !== 0) log.warn('npm install a échoué — lance-le à la main si besoin.');
+  // Si la MAJ embarque déjà les deps runtime (node_modules/undici), on évite
+  // npm install — indispensable sur une machine sans Node/npm (app packagée).
+  if (fs.existsSync(path.join(srcRoot, 'node_modules', 'undici'))) {
+    log.info('Dépendances embarquées dans la MAJ — pas de npm install nécessaire.');
+  } else {
+    log.info('Réinstallation des dépendances (npm install)...');
+    // shell:true requis sous Windows : depuis un correctif de sécurité Node,
+    // spawn refuse de lancer un .cmd (npm.cmd) sans passer par le shell.
+    const ni = spawnSync('npm install --no-audit --no-fund', { cwd: ROOT, stdio: 'inherit', shell: true });
+    if (ni.status !== 0) log.warn('npm install a échoué — lance-le à la main si besoin.');
+  }
 
   fs.rmSync(tmpZip, { force: true });
   fs.rmSync(staging, { recursive: true, force: true });

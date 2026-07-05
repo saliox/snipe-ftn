@@ -125,13 +125,30 @@ carte « Comptes Epic » et coche **Tous les comptes** avant de lancer.
 | `--monitor` | — | surveille jusqu'à ce que le nom soit libre puis rafale |
 | `--at <ISO>` | — | instant du drop en UTC |
 | `--in <durée>` | — | drop relatif : `90s`, `15m`, `2h` |
-| `--burst <n>` | 6 | nombre de requêtes dans la rafale |
-| `--spacing <ms>` | 30 | espacement entre requêtes |
+| `--burst <n>` | 6 | nombre total de requêtes dans la rafale |
+| `--volley <n>` | 3 | requêtes lâchées **simultanément** à T0 (course serrée) |
+| `--spacing <ms>` | 30 | espacement des relances après la volée |
 | `--lead <ms>` | 40 | avance de la 1re requête sur T0 |
-| `--poll <ms>` | 1000 | intervalle de sondage en monitor |
+| `--poll <ms>` | 1000 | sondage en monitor (**adaptatif** : accélère près de `--at`) |
 | `--connections <n>` | 3 | connexions TLS pré-chauffées |
+| `--proxies <file>` | — | .txt de proxies (host:port) pour répartir la **détection** |
 | `--all-accounts` | — | tire depuis tous les comptes enregistrés en parallèle |
+| `--diag` | — | journal détaillé + résumé de métriques (RTT, 429, offset) |
 | `--skip-ntp` | — | ne pas synchroniser l'horloge |
+
+**Optimisations du moteur :**
+- **Volée parallèle** : à T0, `--volley` requêtes partent d'un coup (au lieu de
+  toutes échelonnées) pour gagner la course à la milliseconde, puis des relances
+  espacées rattrapent une libération légèrement retardée. Le tir s'arrête dès
+  qu'une requête gagne.
+- **Polling adaptatif** : en monitor avec un `--at` connu, le sondage est lent
+  loin du drop et passe à ~150-250 ms dans la fenêtre du drop (avec jitter).
+- **Ré-sync NTP** avant le tir sur les attentes longues (l'horloge dérive).
+- **Proxies (détection only)** : `--proxies` répartit le *polling* sur plusieurs
+  IP pour sonder plus vite sans se faire rate-limiter. Le **tir** de changement
+  part toujours de ton IP (authentifié, stable). Un proxy mort est ignoré.
+- **`--diag`** affiche RTT min/médian/p95/max, nombre de 429, offset horloge —
+  pour optimiser sur des mesures réelles plutôt qu'au jugé.
 
 ## Mise à jour automatique
 
@@ -144,7 +161,8 @@ sources**, pas un installeur `.exe`).
   hors-ligne).
 - **`node src/index.js update`** : télécharge la dernière release, vérifie le
   **SHA-256**, extrait le zip, remplace les fichiers (sans toucher à `data/` ni
-  `.env`) et relance `npm install`. `--check` = vérifier sans installer.
+  `.env`). Le zip **embarque les deps** (`undici`/`dotenv`), donc la MAJ marche
+  même sans Node/npm (app packagée). `--check` = vérifier sans installer.
 - **Source par défaut** : Releases GitHub de `saliox/snipe-ftn` (autonome, aucune
   config). Overrides dans `.env` :
   - `UPDATE_REPO=owner/name` — autre dépôt GitHub.
@@ -193,7 +211,8 @@ l'auto-update fonctionne sans token. Overrides via `.env` : `UPDATE_REPO`.
 | `src/auth.js` | protocole OAuth Epic (échange de code, refresh) |
 | `src/accounts.js` | gestionnaire multi-comptes (store chiffré, refresh, actif) |
 | `src/epicapi.js` | dispo du display name, vérif, changement, validation |
-| `src/sniper.js` | moteur burst + monitor + timing NTP |
+| `src/sniper.js` | moteur burst + monitor + timing NTP + métriques |
+| `src/proxy.js` | pool de proxies pour la détection (polling) |
 | `src/ntp.js` | client SNTP (mesure de dérive d'horloge) |
 | `src/securebox.js` | chiffrement du token au repos |
 | `src/update.js` | auto-update CLI (check + download + remplacement) |

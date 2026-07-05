@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "electron .",
+    "test": "node --test",
     "portable": "node scripts/build-portable.mjs",
     "installer": "node scripts/build-installer.mjs",
     "cli": "node src/index.js",

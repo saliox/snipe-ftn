@@ -167,10 +167,12 @@ ipcMain.handle('snipe', async (_e, opts) => {
       dropAt: opts.dropAt || undefined,
       monitor: !!opts.monitor,
       burst: opts.burst,
+      volley: opts.volley,
       spacingMs: opts.spacingMs,
       leadMs: opts.leadMs,
       pollMs: opts.pollMs,
       connections: opts.connections,
+      diag: !!opts.diag,
       skipNtp: !!opts.skipNtp,
     };
 

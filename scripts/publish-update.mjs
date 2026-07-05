@@ -23,19 +23,36 @@ const zipName = 'snipe-ftn.zip';
 const releaseDir = path.join(root, 'release');
 const zipPath = path.join(releaseDir, zipName);
 
-// 1. Construit le zip de sources. On n'inclut que ce qui doit être déployé
-//    (jamais data/, node_modules/, .env, release/, .git).
+// 1. Construit le zip via un dossier de staging (structure préservée). On y
+//    embarque aussi les deps runtime (undici, dotenv) pour que l'auto-update
+//    fonctionne SANS `npm install` (machines sans Node/npm). Jamais data/, .env,
+//    release/, .git, ni node_modules/electron.
 fs.mkdirSync(releaseDir, { recursive: true });
 fs.rmSync(zipPath, { force: true });
 
-const include = ['src', 'gui', 'scripts', 'package.json', 'package-lock.json', 'README.md', '.env.example', '.gitignore']
-  .filter((p) => fs.existsSync(path.join(root, p)))
-  .map((p) => `'${path.join(root, p).replace(/'/g, "''")}'`)
-  .join(',');
+const staging = path.join(releaseDir, '_stage');
+fs.rmSync(staging, { recursive: true, force: true });
+fs.mkdirSync(staging, { recursive: true });
 
+const items = [
+  'src', 'gui', 'scripts', 'package.json', 'package-lock.json',
+  'README.md', '.env.example', '.gitignore',
+  path.join('node_modules', 'undici'),
+  path.join('node_modules', 'dotenv'),
+];
+for (const rel of items) {
+  const from = path.join(root, rel);
+  if (!fs.existsSync(from)) continue;
+  const to = path.join(staging, rel);
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  fs.cpSync(from, to, { recursive: true });
+}
+
+const q = (s) => s.replace(/'/g, "''");
 const z = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-  `Compress-Archive -Path ${include} -DestinationPath '${zipPath.replace(/'/g, "''")}' -Force`],
+  `Compress-Archive -Path '${q(path.join(staging, '*'))}' -DestinationPath '${q(zipPath)}' -Force`],
   { stdio: 'inherit' });
+fs.rmSync(staging, { recursive: true, force: true });
 if (z.status !== 0 || !fs.existsSync(zipPath)) {
   console.error('Échec de la construction du zip.');
   process.exit(1);

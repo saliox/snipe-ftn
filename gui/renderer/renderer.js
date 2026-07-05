@@ -160,11 +160,13 @@ $('btn-snipe').onclick = async () => {
     name,
     monitor: mode === 'monitor',
     burst: intVal('p-burst', 6),
+    volley: intVal('p-volley', 3),
     spacingMs: intVal('p-spacing', 30),
     leadMs: intVal('p-lead', 40),
     pollMs: intVal('p-poll', 1000),
     connections: intVal('p-conn', 3),
     allAccounts: $('p-allaccounts').checked,
+    diag: $('p-diag').checked,
     skipNtp: $('p-skipntp').checked,
   };
 
