@@ -1,7 +1,7 @@
 {
   "name": "snipe-ftn",
-  "version": "0.1.0",
-  "description": "Sniper de pseudos Fortnite / Epic Games — auth Epic OAuth, sync NTP, burst timing",
+  "version": "0.2.0",
+  "description": "Sniper de pseudos Fortnite / Epic Games — multi-comptes, scanner, watchlist, alertes, planif reboot-safe",
   "type": "module",
   "main": "gui/main.js",
   "bin": {
