@@ -15,6 +15,7 @@ import { scoreName, rankNames } from '../src/score.js';
 import { setWebhookUrl, getWebhookUrl, alertsConfigured } from '../src/alerts.js';
 import * as history from '../src/history.js';
 import { addSchedule, listSchedules, removeSchedule } from '../src/schedule.js';
+import { withLock } from '../src/accounts.js';
 
 test('isNewer : compare des versions sémantiques', () => {
   assert.equal(isNewer('1.0.1', '1.0.0'), true);
@@ -128,6 +129,17 @@ test('schedule : add / list / remove (sans tâche Windows)', () => {
   assert.equal(list[0].name, 'TestName');
   removeSchedule(item.id);
   assert.equal(listSchedules().length, 0);
+});
+
+test('withLock : sérialise les sections critiques (single-flight)', async () => {
+  process.env.SNIPE_DATA_DIR = path.join(os.tmpdir(), `lock-${crypto.randomUUID()}`);
+  const order = [];
+  const a = withLock('t', async () => { order.push('a-start'); await new Promise((r) => setTimeout(r, 120)); order.push('a-end'); });
+  await new Promise((r) => setTimeout(r, 10)); // s'assurer que a prend le verrou en premier
+  const b = withLock('t', async () => { order.push('b-start'); order.push('b-end'); });
+  await Promise.all([a, b]);
+  // b ne doit démarrer qu'APRÈS la fin de a (pas d'entrelacement).
+  assert.deepEqual(order, ['a-start', 'a-end', 'b-start', 'b-end']);
 });
 
 test('makeProxyPool : rotation + éjection après échecs', () => {

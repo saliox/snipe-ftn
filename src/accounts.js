@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { log, c } from './util.js';
+import { log, c, sleep } from './util.js';
 import { saveEncrypted, loadEncrypted } from './securebox.js';
 import { exchangeAuthCode, refreshTokens, cacheFromToken, authCodeUrl } from './auth.js';
 
@@ -124,19 +124,55 @@ export function setActive(id) {
   return listAccounts();
 }
 
-// Rafraîchit (si nécessaire) et renvoie un access token frais pour un compte.
-async function freshFor(store, acc) {
-  if (acc.accessToken && acc.expiresAt && Date.now() < acc.expiresAt) {
-    return { accessToken: acc.accessToken, accountId: acc.accountId, displayName: acc.displayName };
+// Verrou fichier INTER-PROCESSUS (mkdir atomique). Sérialise les sections
+// critiques entre le GUI et une tâche planifiée qui tourneraient en même temps.
+// Vole un verrou périmé (process crashé) après staleMs ; si on n'obtient pas le
+// verrou à temps, on exécute quand même (mieux vaut un risque rare qu'un blocage).
+export async function withLock(name, fn, { staleMs = 20_000, maxWaitMs = 15_000, pollMs = 100 } = {}) {
+  const lockPath = path.join(dataDir(), `${name}.lock`);
+  const start = Date.now();
+  let held = false;
+  fs.mkdirSync(dataDir(), { recursive: true });
+  while (Date.now() - start < maxWaitMs) {
+    try { fs.mkdirSync(lockPath); held = true; break; } // atomique : EEXIST si déjà pris
+    catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      try { if (Date.now() - fs.statSync(lockPath).mtimeMs > staleMs) { fs.rmdirSync(lockPath); continue; } }
+      catch { /* le verrou a disparu : on retente */ }
+      await sleep(pollMs);
+    }
   }
-  if (!acc.refreshToken) throw new Error(`Compte "${acc.label}" : refresh indisponible, reconnecte-le.`);
-  const info = cacheFromToken(await refreshTokens(acc.refreshToken));
-  acc.accessToken = info.accessToken;
-  acc.expiresAt = info.expiresAt;
-  if (info.refreshToken) acc.refreshToken = info.refreshToken;
-  if (info.displayName) acc.displayName = info.displayName;
-  saveStore(store);
-  return { accessToken: acc.accessToken, accountId: acc.accountId, displayName: acc.displayName };
+  try { return await fn(); }
+  finally { if (held) { try { fs.rmdirSync(lockPath); } catch { /* déjà retiré */ } } }
+}
+
+// Rafraîchit (si nécessaire) et renvoie un access token frais pour un compte
+// (identifié par son id). Single-flight : le refresh se fait sous verrou, avec
+// re-lecture du store — si un autre process a déjà rafraîchi, on réutilise son
+// token au lieu de re-consommer le refresh token (qui est à USAGE UNIQUE côté Epic).
+async function freshFor(accId) {
+  const valid = (a) => a && a.accessToken && a.expiresAt && Date.now() < a.expiresAt;
+  const pick = (store) => store.accounts.find((a) => a.id === accId);
+
+  // Chemin rapide : token en cache encore valide (pas de verrou, pas de réseau).
+  let acc = pick(loadStore());
+  if (valid(acc)) return { accessToken: acc.accessToken, accountId: acc.accountId, displayName: acc.displayName };
+
+  return withLock('accounts-refresh', async () => {
+    const store = loadStore();               // re-lecture : un autre process a pu rafraîchir
+    acc = pick(store);
+    if (!acc) throw new Error('Compte introuvable.');
+    if (valid(acc)) return { accessToken: acc.accessToken, accountId: acc.accountId, displayName: acc.displayName };
+    if (!acc.refreshToken) throw new Error(`Compte "${acc.label}" : refresh indisponible, reconnecte-le.`);
+
+    const info = cacheFromToken(await refreshTokens(acc.refreshToken));
+    acc.accessToken = info.accessToken;
+    acc.expiresAt = info.expiresAt;
+    if (info.refreshToken) acc.refreshToken = info.refreshToken;
+    if (info.displayName) acc.displayName = info.displayName;
+    saveStore(store);
+    return { accessToken: acc.accessToken, accountId: acc.accountId, displayName: acc.displayName };
+  });
 }
 
 // Token frais du compte ACTIF (compat getValidToken de l'ancienne auth.js).
@@ -144,7 +180,7 @@ export async function getValidToken() {
   const store = loadStore();
   const acc = store.accounts.find((a) => a.id === store.activeId) || store.accounts[0];
   if (!acc) throw new Error('Non connecté. Lance : node src/index.js login');
-  return freshFor(store, acc);
+  return freshFor(acc.id);
 }
 
 // Tokens frais de TOUS les comptes (snipe multi-comptes). Ignore les comptes
@@ -152,7 +188,7 @@ export async function getValidToken() {
 export async function allFreshTokens() {
   const store = loadStore();
   const out = await Promise.all(store.accounts.map(async (a) => {
-    try { return { id: a.id, label: a.label, ...(await freshFor(store, a)) }; }
+    try { return { id: a.id, label: a.label, ...(await freshFor(a.id)) }; }
     catch (e) { log.warn(`Compte "${a.label}" ignoré : ${e.message}`); return null; }
   }));
   return out.filter(Boolean);

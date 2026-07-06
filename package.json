@@ -1,6 +1,6 @@
 {
   "name": "snipe-ftn",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Sniper de pseudos Fortnite / Epic Games — multi-comptes, scanner, watchlist, alertes, planif reboot-safe",
   "type": "module",
   "main": "gui/main.js",
